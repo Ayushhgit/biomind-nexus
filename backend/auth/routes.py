@@ -444,23 +444,27 @@ async def _log_auth_event(
     """
     Log authentication event to audit trail.
     
-    Integrates with Cassandra audit client if available.
+    Uses cassandra_dal which has file-based fallback.
     """
     try:
-        audit_client = getattr(request.app.state, "audit", None)
-        if audit_client:
-            await audit_client.log_event(
-                event_type=event_type,
-                user_id=user_id or "anonymous",
-                action=event_type.split(".")[-1],
-                request_id=getattr(request.state, "request_id", None),
-                details={
-                    **(details or {}),
-                    "ip": get_client_ip(request),
-                    "user_agent": get_user_agent(request)[:256],
-                },
-            )
-    except Exception:
+        from backend.dal.cassandra_dal import log_workflow_event
+        import uuid
+        
+        await log_workflow_event(
+            request_id=str(uuid.uuid4()),
+            user_id=user_id or "anonymous",
+            event_type=event_type,
+            agent_name=event_type.split(".")[-1],
+            input_hash="",
+            output_hash="",
+            step_index=0,
+            metadata={
+                **(details or {}),
+                "ip": get_client_ip(request),
+                "user_agent": get_user_agent(request)[:256],
+            }
+        )
+    except Exception as e:
         # Don't fail request if audit logging fails
-        # TODO: Add fallback logging
+        print(f"Audit logging error: {e}")
         pass

@@ -17,6 +17,8 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 
+from backend.auth.dependencies import get_current_user, AuthenticatedUser
+
 from backend.agents.schemas import (
     DrugRepurposingQuery,
     DrugCandidate,
@@ -129,7 +131,10 @@ class QueryResponse(BaseModel):
 # =============================================================================
 
 @router.post("/query", response_model=QueryResponse, summary="Submit Drug Repurposing Query")
-async def submit_query(request: QueryRequest):
+async def submit_query(
+    request: QueryRequest,
+    user: AuthenticatedUser = Depends(get_current_user)
+):
     """
     Submit a drug repurposing query for analysis.
     
@@ -145,6 +150,22 @@ async def submit_query(request: QueryRequest):
     """
     query_id = f"q-{uuid4().hex[:8]}"
     
+    # Log query submission
+    try:
+        from backend.dal.cassandra_dal import log_workflow_event
+        await log_workflow_event(
+            request_id=query_id,
+            user_id=str(user.user_id),
+            event_type="QUERY_SUBMITTED",
+            agent_name="api",
+            input_hash="",
+            output_hash="",
+            step_index=0,
+            metadata={"query": request.query, "max_candidates": request.max_candidates}
+        )
+    except Exception as e:
+        print(f"Failed to log query submission: {e}")
+    
     try:
         # Build structured query
         query = DrugRepurposingQuery(
@@ -155,10 +176,10 @@ async def submit_query(request: QueryRequest):
             include_experimental=request.include_experimental,
         )
         
-        # Execute workflow
+        # Execute workflow with actual user_id
         final_state = await run_drug_repurposing_workflow(
             query=query,
-            user_id="api_user",  # Would come from auth in production
+            user_id=str(user.user_id),
             request_id=query_id
         )
         
@@ -174,6 +195,21 @@ async def submit_query(request: QueryRequest):
         return response
         
     except Exception as e:
+        # Log failure
+        try:
+            from backend.dal.cassandra_dal import log_workflow_event
+            await log_workflow_event(
+                request_id=query_id,
+                user_id=str(user.user_id),
+                event_type="QUERY_FAILED",
+                agent_name="api",
+                input_hash="",
+                output_hash="",
+                step_index=0,
+                metadata={"error": str(e)}
+            )
+        except:
+            pass
         raise HTTPException(status_code=500, detail=f"Workflow execution failed: {str(e)}")
 
 
