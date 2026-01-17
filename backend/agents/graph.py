@@ -168,6 +168,12 @@ async def run_drug_repurposing_workflow(
     """
     Execute the drug repurposing workflow.
     
+    Architecture:
+        1. Pre-load graph data via DAL (agents never touch DB)
+        2. Inject data into AgentState
+        3. Run deterministic agent pipeline
+        4. Log audit trail via DAL
+    
     Args:
         query: Structured query input
         user_id: User identifier for audit
@@ -176,18 +182,81 @@ async def run_drug_repurposing_workflow(
     Returns:
         Final AgentState with all outputs
     """
+    # Pre-load graph context via DAL (agents don't know about this)
+    graph_context = await _preload_graph_context(query)
+    
     initial_state: AgentState = {
         "query": query,
         "user_id": user_id,
         "request_id": request_id,
         "step_history": [],
         "errors": [],
+        # Pre-loaded graph data (agents treat this as given)
+        "graph_drug_targets": graph_context.get("drug_targets", []),
+        "graph_disease_genes": graph_context.get("disease_genes", []),
+        "graph_pathway_edges": graph_context.get("pathway_edges", []),
+        "graph_neighbors": graph_context.get("neighbors", []),
     }
     
     final_state = await drug_repurposing_graph.ainvoke(initial_state)
     
+    # Log workflow completion via DAL (agents don't know about this)
+    await _log_workflow_completion(final_state, user_id, request_id)
+    
     return final_state
+
+
+async def _preload_graph_context(query: DrugRepurposingQuery) -> dict:
+    """
+    Pre-load graph data via DAL.
+    
+    Called BEFORE agents run. Agents only see structured data in AgentState.
+    """
+    try:
+        from backend.dal.neo4j_dal import load_graph_context_for_query
+        
+        # Extract drug/disease from query if pre-specified
+        drug_name = query.source_drug.name if query.source_drug else None
+        disease_name = query.target_disease.name if query.target_disease else None
+        
+        # If no pre-extracted entities, try parsing from raw query
+        if not drug_name or not disease_name:
+            # Simple heuristic: look for common patterns
+            # In production, this would be more sophisticated
+            return {}
+        
+        return await load_graph_context_for_query(drug_name, disease_name)
+    except Exception as e:
+        # Graceful degradation: agents can still work without graph data
+        print(f"Graph context pre-load skipped: {e}")
+        return {}
+
+
+async def _log_workflow_completion(
+    state: AgentState,
+    user_id: str,
+    request_id: str
+) -> None:
+    """
+    Log workflow completion via DAL.
+    
+    Called AFTER agents complete. Agents never access audit logging.
+    """
+    try:
+        from backend.dal.cassandra_dal import log_workflow_complete
+        
+        await log_workflow_complete(
+            request_id=request_id,
+            user_id=user_id,
+            approved=state.get("workflow_approved", False),
+            step_history=state.get("step_history", []),
+            total_candidates=len(state.get("final_candidates", []))
+        )
+    except Exception as e:
+        # Graceful degradation: audit failure shouldn't break workflow
+        print(f"Audit logging skipped: {e}")
 
 
 # Legacy alias
 agent_graph = drug_repurposing_graph
+

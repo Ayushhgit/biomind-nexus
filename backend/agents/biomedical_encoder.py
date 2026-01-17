@@ -1,6 +1,4 @@
 """
-Biomedical Encoder - BioBERT / PubMedBERT Wrapper
-
 Clean wrapper around HuggingFace biomedical language models.
 Models are used ONLY for extraction and scoring, NOT decision-making.
 
@@ -17,8 +15,10 @@ Design:
 
 from typing import List, Dict, Optional, Tuple, Literal
 from enum import Enum
-import torch
-import numpy as np
+
+# Lazy imports for heavy ML dependencies
+# import torch
+# import numpy as np
 
 
 class ModelType(str, Enum):
@@ -89,7 +89,7 @@ class BiomedicalEncoder:
         self._model.to(self.device)
         self._model.eval()
     
-    def encode(self, text: str) -> torch.Tensor:
+    def encode(self, text: str) -> "torch.Tensor":
         """
         Encode text to dense embedding vector.
         
@@ -103,6 +103,7 @@ class BiomedicalEncoder:
             Embedding tensor of shape (hidden_size,)
         """
         self._load_model()
+        import torch
         
         inputs = self._tokenizer(
             text,
@@ -126,7 +127,7 @@ class BiomedicalEncoder:
         
         return (sum_embeddings / sum_mask).squeeze(0)
     
-    def encode_batch(self, texts: List[str]) -> torch.Tensor:
+    def encode_batch(self, texts: List[str]) -> "torch.Tensor":
         """
         Encode multiple texts to embeddings.
         
@@ -137,6 +138,7 @@ class BiomedicalEncoder:
             Tensor of shape (batch_size, hidden_size)
         """
         self._load_model()
+        import torch
         
         inputs = self._tokenizer(
             texts,
@@ -170,6 +172,8 @@ class BiomedicalEncoder:
         Returns:
             Similarity score in [0, 1]
         """
+        import torch
+        
         emb1 = self.encode(text1)
         emb2 = self.encode(text2)
         
@@ -433,8 +437,10 @@ class PubMedBERTScorer:
         self._ensure_encoder()
         return self._encoder.similarity(evidence_text, hypothesis)
     
-    def _cosine_sim(self, emb1: torch.Tensor, emb2: torch.Tensor) -> float:
+    def _cosine_sim(self, emb1: "torch.Tensor", emb2: "torch.Tensor") -> float:
         """Compute normalized cosine similarity."""
+        import torch
+        
         cos_sim = torch.nn.functional.cosine_similarity(
             emb1.unsqueeze(0),
             emb2.unsqueeze(0)

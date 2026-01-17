@@ -1,6 +1,4 @@
 """
-BioMind Nexus - Ranking Agent
-
 Final ranking and scoring of drug repurposing candidates.
 Applies weighted multi-criteria ranking algorithm.
 
@@ -33,7 +31,12 @@ class RankingWeights:
     mechanism_paths: float = 0.15
     novelty: float = 0.05
     
+    # Normalization constants
+    max_evidence: int = 20
+    max_paths: int = 5
+    
     def validate(self) -> bool:
+        """Validate that weights sum to approximately 1.0."""
         total = (
             self.overall_score + 
             self.confidence + 
@@ -57,13 +60,19 @@ class RankingAgent(BaseAgent):
     
     name = "ranking_agent"
     description = "Ranks and filters drug repurposing candidates"
-    version = "1.0.0"
+    version = "1.1.0"
     
     required_input_keys = ["query", "drug_candidates"]
     output_keys = ["ranked_candidates"]
     
     # Default ranking weights
     DEFAULT_WEIGHTS = RankingWeights()
+    
+    def __init__(self):
+        super().__init__()
+        # Validate weights on initialization
+        if not self.DEFAULT_WEIGHTS.validate():
+            raise ValueError("Ranking weights must sum to 1.0")
     
     async def process(self, state: AgentState) -> AgentState:
         """
@@ -88,8 +97,14 @@ class RankingAgent(BaseAgent):
             composite_score = self._calculate_composite_score(candidate)
             scored_candidates.append((composite_score, candidate))
         
-        # Sort by composite score (descending)
-        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+        # Sort by composite score (descending) with deterministic tie-breakers
+        # Primary: Composite Score
+        # Secondary: Confidence
+        # Tertiary: Evidence Count
+        scored_candidates.sort(
+            key=lambda x: (x[0], x[1].confidence, x[1].evidence_count),
+            reverse=True
+        )
         
         # Apply filters from query
         filtered_candidates = []
@@ -98,9 +113,12 @@ class RankingAgent(BaseAgent):
             if candidate.confidence < query.min_confidence:
                 continue
             
-            # Update candidate with final rank
-            candidate.rank = len(filtered_candidates) + 1
-            filtered_candidates.append(candidate)
+            # Create new instance with updated rank (Pure)
+            # Use model_copy to avoid mutating the original object
+            ranked_candidate = candidate.model_copy(
+                update={"rank": len(filtered_candidates) + 1}
+            )
+            filtered_candidates.append(ranked_candidate)
             
             # Apply max_candidates limit
             if len(filtered_candidates) >= query.max_candidates:
@@ -123,11 +141,11 @@ class RankingAgent(BaseAgent):
         """
         weights = self.DEFAULT_WEIGHTS
         
-        # Normalize evidence count (assume max 20 for normalization)
-        evidence_normalized = min(candidate.evidence_count / 20.0, 1.0)
+        # Normalize evidence count
+        evidence_normalized = min(candidate.evidence_count / weights.max_evidence, 1.0)
         
-        # Normalize mechanism paths (assume max 5)
-        paths_normalized = min(len(candidate.mechanism_paths) / 5.0, 1.0)
+        # Normalize mechanism paths
+        paths_normalized = min(len(candidate.mechanism_paths) / weights.max_paths, 1.0)
         
         composite = (
             weights.overall_score * candidate.overall_score +

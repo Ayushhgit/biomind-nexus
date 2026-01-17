@@ -415,11 +415,19 @@ class AgentState(TypedDict, total=False):
     All agents read from and write to this shared state.
     
     Design: Agents are PURE - they transform state, nothing else.
+            Agents never access databases - data is pre-loaded by orchestrator.
     """
     # === Input ===
     query: DrugRepurposingQuery
     request_id: str
     user_id: str
+    
+    # === Pre-loaded Graph Context (from DAL) ===
+    # Agents read this as given data; they don't know it came from Neo4j
+    graph_drug_targets: List[BiomedicalEntity]
+    graph_disease_genes: List[BiomedicalEntity]
+    graph_pathway_edges: List[BiologicalEdge]
+    graph_neighbors: List[BiomedicalEntity]
     
     # === Entity Extraction Agent Output ===
     extracted_entities: List[BiomedicalEntity]
@@ -449,4 +457,5 @@ class AgentState(TypedDict, total=False):
     current_step: str
     step_history: List[str]
     errors: List[str]
+
 

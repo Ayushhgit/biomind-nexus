@@ -62,8 +62,16 @@ async def lifespan(app: FastAPI):
     # Initialize Neo4j (optional)
     if NEO4J_AVAILABLE:
         try:
-            app.state.neo4j = Neo4jClient(settings.NEO4J_URI)
+            app.state.neo4j = Neo4jClient(
+                uri=settings.NEO4J_URI,
+                user=settings.NEO4J_USER,
+                password=settings.NEO4J_PASSWORD
+            )
             await app.state.neo4j.connect()
+            # Set the global client for DAL
+            from backend.dal.neo4j_dal import set_neo4j_client
+            set_neo4j_client(app.state.neo4j)
+            print("Info: Neo4j connected and DAL initialized.")
         except Exception as e:
             print(f"Warning: Neo4j connection failed: {e}")
             app.state.neo4j = None

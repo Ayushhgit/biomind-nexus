@@ -121,7 +121,6 @@ class BaseAgent(ABC):
     async def process(self, state: AgentState) -> AgentState:
         """
         Execute the agent's core logic.
-        
         Subclasses MUST implement this method.
         
         Args:
@@ -129,13 +128,6 @@ class BaseAgent(ABC):
         
         Returns:
             Updated state with agent outputs
-        
-        Implementation Requirements:
-        1. Read only from state (no external I/O)
-        2. Write outputs to state
-        3. Return modified state
-        4. Do NOT access databases
-        5. Do NOT perform logging
         """
         raise NotImplementedError("Subclasses must implement process()")
     
