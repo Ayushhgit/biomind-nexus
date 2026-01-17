@@ -34,8 +34,14 @@ class Settings(BaseSettings):
     # Database (PostgreSQL for production, SQLite for development)
     DATABASE_URL: str = "sqlite:///./biomind.db"
     
-    # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
+    # CORS - development allows multiple origins (update for production)
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://10.20.72.65:3000",      # Network frontend
+        "http://10.20.56.44:3000",      # Alternative network
+        "*",                             # Allow all for development
+    ]
     
     # Groq API Configuration
     GROQ_API_KEY: str = ""
