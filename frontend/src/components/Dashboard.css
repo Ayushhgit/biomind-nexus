@@ -1,0 +1,191 @@
+/**
+ * BioMind Nexus Dashboard Styles
+ * Light theme for biomedical research platform
+ */
+
+.dashboard-container {
+    min-height: 100vh;
+    background: #f8fafc;
+}
+
+/* Header */
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.header-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.brand-icon {
+    width: 36px;
+    height: 36px;
+    color: #0d9488;
+}
+
+.brand-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.brand-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.header-user {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.user-email {
+    font-size: 0.9rem;
+    color: #334155;
+    font-weight: 500;
+}
+
+.user-role {
+    font-size: 0.75rem;
+    color: #0d9488;
+    background: #f0fdfa;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    text-transform: capitalize;
+}
+
+.logout-button {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #64748b;
+    background: transparent;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.logout-button:hover {
+    color: #dc2626;
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+/* Main Content */
+.dashboard-main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.welcome-card {
+    text-align: center;
+    background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
+    color: #ffffff;
+    padding: 3rem;
+    border-radius: 16px;
+    margin-bottom: 2rem;
+}
+
+.welcome-card h1 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+}
+
+.welcome-card p {
+    opacity: 0.9;
+    font-size: 1rem;
+    margin: 0 0 1.5rem 0;
+}
+
+.welcome-status {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.status-badge {
+    font-size: 0.8rem;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.4rem 0.75rem;
+    border-radius: 20px;
+}
+
+/* Features Grid */
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.feature-card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 1.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    border: 1px solid #f1f5f9;
+    text-align: center;
+}
+
+.feature-card .feature-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.feature-card h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0 0 0.5rem 0;
+}
+
+.feature-card p {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin: 0 0 1rem 0;
+}
+
+.coming-soon {
+    display: inline-block;
+    font-size: 0.7rem;
+    color: #0d9488;
+    background: #f0fdfa;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .dashboard-header {
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1rem;
+    }
+
+    .header-user {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .dashboard-main {
+        padding: 1rem;
+    }
+
+    .welcome-card {
+        padding: 2rem 1.5rem;
+    }
+}
