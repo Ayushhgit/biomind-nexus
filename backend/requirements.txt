@@ -1,0 +1,59 @@
+# -------------------------
+# Core Backend Framework
+# -------------------------
+fastapi
+uvicorn[standard]
+
+# -------------------------
+# Auth & Security
+# -------------------------
+python-jose[cryptography]
+passlib[bcrypt]
+pydantic
+python-multipart
+
+# -------------------------
+# Agent Orchestration
+# -------------------------
+langgraph
+langchain-core
+
+# -------------------------
+# Biomedical NLP
+# -------------------------
+transformers
+torch
+sentencepiece
+
+# -------------------------
+# Knowledge Graph
+# -------------------------
+neo4j
+
+# -------------------------
+# Audit Logging
+# -------------------------
+cassandra-driver
+
+# -------------------------
+# Cryptography & Hashing
+# -------------------------
+cryptography
+
+# -------------------------
+# PDF Generation
+# -------------------------
+reportlab
+
+# -------------------------
+# Utilities
+# -------------------------
+python-dotenv
+rich
+loguru
+
+# -------------------------
+# Testing
+# -------------------------
+pytest
+httpx
