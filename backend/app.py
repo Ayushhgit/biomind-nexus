@@ -81,13 +81,21 @@ async def lifespan(app: FastAPI):
     # Initialize Cassandra (optional)
     if CASSANDRA_AVAILABLE:
         try:
-            app.state.audit = CassandraAuditClient(settings.CASSANDRA_HOSTS)
+            app.state.audit = CassandraAuditClient(
+                hosts=settings.CASSANDRA_HOSTS,
+                keyspace=settings.CASSANDRA_KEYSPACE
+            )
             await app.state.audit.connect()
+            
+            # Set the global client for DAL
+            from backend.dal.cassandra_dal import set_cassandra_client
+            set_cassandra_client(app.state.audit)
+            print("Info: Cassandra connected and Audit DAL initialized.")
         except Exception as e:
             print(f"Warning: Cassandra connection failed: {e}")
             app.state.audit = None
     else:
-        print("Info: Cassandra driver not available (Python 3.12+ incompatibility), skipping.")
+        print("Info: Cassandra driver not available, skipping.")
     
     yield
     

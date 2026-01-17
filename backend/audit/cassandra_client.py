@@ -121,6 +121,18 @@ class CassandraAuditClient:
                 PRIMARY KEY ((partition_date), event_id)
             ) WITH CLUSTERING ORDER BY (event_id DESC)
         """)
+        
+        # Create index for request_id lookups
+        self._session.execute("""
+            CREATE INDEX IF NOT EXISTS idx_audit_request_id 
+            ON audit_events (request_id)
+        """)
+        
+        # Create index for user_id lookups
+        self._session.execute("""
+            CREATE INDEX IF NOT EXISTS idx_audit_user_id 
+            ON audit_events (user_id)
+        """)
     
     async def log_event(
         self,
@@ -171,7 +183,7 @@ class CassandraAuditClient:
             INSERT INTO audit_events 
                 (partition_date, event_id, event_type, user_id, request_id, 
                  action, resource, details, hash, prev_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             consistency_level=ConsistencyLevel.LOCAL_QUORUM
         )
@@ -202,19 +214,46 @@ class CassandraAuditClient:
     ) -> List[Dict[str, Any]]:
         """
         Query audit events within a time range.
-        
-        Args:
-            start_date: Range start (inclusive)
-            end_date: Range end (inclusive)
-            user_id: Filter by user (optional)
-            event_type: Filter by type (optional)
-            limit: Maximum results
-        
-        Returns:
-            List of audit event dicts
         """
         # TODO: Implement with proper date partitioning
         return []
+
+    async def get_events_by_request(
+        self,
+        request_id: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all audit events for a specific request.
+        """
+        statement = SimpleStatement(
+            f"SELECT * FROM audit_events WHERE request_id = %s",
+            consistency_level=ConsistencyLevel.LOCAL_QUORUM
+        )
+        
+        # Note: This might be slow without timeframe. 
+        # In production, require date range + allow filtering.
+        results = self._session.execute(statement, [request_id])
+        
+        events = []
+        for row in results:
+            import json
+            details = {}
+            if row.details:
+                try:
+                    details = json.loads(row.details)
+                except:
+                    pass
+            
+            events.append({
+                "event_id": str(row.event_id),
+                "event_type": row.event_type,
+                "user_id": row.user_id,
+                "action": row.action,
+                "timestamp": row.created_at.isoformat() if row.created_at else "",
+                "details": details
+            })
+            
+        return events
     
     async def verify_chain_integrity(self, date: datetime) -> bool:
         """
