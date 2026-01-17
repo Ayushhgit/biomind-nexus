@@ -13,12 +13,12 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Path
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from backend.auth.models import User, Role, Session
-from backend.auth.router import get_current_user
+from backend.auth.dependencies import get_current_user, AuthenticatedUser
 from backend.auth.database import get_session
 
 
@@ -29,7 +29,7 @@ router = APIRouter()
 # Dependencies
 # =============================================================================
 
-async def require_admin(current_user: User = Depends(get_current_user)):
+async def require_admin(current_user: AuthenticatedUser = Depends(get_current_user)):
     """Require admin role for access."""
     if current_user.role != Role.ADMIN:
         raise HTTPException(
@@ -110,8 +110,8 @@ async def get_audit_logs(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=10, le=100, description="Items per page"),
     event_type: Optional[str] = Query(None, description="Filter by event type"),
-    user_id: Optional[str] = Query(None, description="Filter by user ID"),
-    admin: User = Depends(require_admin)
+    filter_user_id: Optional[str] = Query(None, alias="user_id", description="Filter by user ID"),
+    admin: AuthenticatedUser = Depends(require_admin)
 ):
     """
     Retrieve audit logs from Cassandra.
@@ -133,8 +133,8 @@ async def get_audit_logs(
         
         if event_type:
             filters.append(f"event_type = '{event_type}'")
-        if user_id:
-            filters.append(f"user_id = '{user_id}'")
+        if filter_user_id:
+            filters.append(f"user_id = '{filter_user_id}'")
         
         if filters:
             query_parts.append("WHERE " + " AND ".join(filters))
@@ -199,7 +199,7 @@ async def get_audit_logs(
 
 @router.get("/users", response_model=UserListResponse, summary="List All Users")
 async def list_users(
-    admin: User = Depends(require_admin),
+    admin: AuthenticatedUser = Depends(require_admin),
     db=Depends(get_session)
 ):
     """
@@ -234,11 +234,11 @@ async def list_users(
         return UserListResponse(users=user_list, total=len(user_list))
 
 
-@router.put("/users/{user_id}", summary="Update User")
+@router.put("/users/{target_user_id}", summary="Update User")
 async def update_user(
-    user_id: str,
-    update: UserUpdateRequest,
-    admin: User = Depends(require_admin),
+    target_user_id: str = Path(..., description="User ID to update"),
+    update: UserUpdateRequest = None,
+    admin: AuthenticatedUser = Depends(require_admin),
     db=Depends(get_session)
 ):
     """
@@ -248,7 +248,7 @@ async def update_user(
     """
     async with db as session:
         result = await session.execute(
-            select(User).where(User.id == UUID(user_id))
+            select(User).where(User.id == UUID(target_user_id))
         )
         user = result.scalar_one_or_none()
         
@@ -256,36 +256,37 @@ async def update_user(
             raise HTTPException(status_code=404, detail="User not found")
         
         # Prevent self-deactivation
-        if str(admin.id) == user_id and update.is_active == False:
+        if str(admin.user_id) == target_user_id and update and update.is_active == False:
             raise HTTPException(
                 status_code=400,
                 detail="Cannot deactivate your own account"
             )
         
         # Update fields
-        if update.is_active is not None:
-            user.is_active = update.is_active
-        
-        if update.role is not None:
-            try:
-                user.role = Role(update.role)
-            except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid role: {update.role}"
-                )
+        if update:
+            if update.is_active is not None:
+                user.is_active = update.is_active
+            
+            if update.role is not None:
+                try:
+                    user.role = Role(update.role)
+                except ValueError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid role: {update.role}"
+                    )
         
         user.updated_at = datetime.utcnow()
         session.add(user)
         await session.commit()
         
-        return {"message": "User updated", "user_id": user_id}
+        return {"message": "User updated", "user_id": target_user_id}
 
 
-@router.post("/users/{user_id}/revoke-sessions", summary="Revoke User Sessions")
+@router.post("/users/{target_user_id}/revoke-sessions", summary="Revoke User Sessions")
 async def revoke_user_sessions(
-    user_id: str,
-    admin: User = Depends(require_admin),
+    target_user_id: str = Path(..., description="User ID to revoke sessions for"),
+    admin: AuthenticatedUser = Depends(require_admin),
     db=Depends(get_session)
 ):
     """
@@ -296,20 +297,20 @@ async def revoke_user_sessions(
     async with db as session:
         result = await session.execute(
             select(Session)
-            .where(Session.user_id == UUID(user_id))
+            .where(Session.user_id == UUID(target_user_id))
             .where(Session.is_valid == True)
         )
-        sessions = result.scalars().all()
+        sessions_list = result.scalars().all()
         
         count = 0
-        for sess in sessions:
+        for sess in sessions_list:
             sess.is_valid = False
             session.add(sess)
             count += 1
         
         await session.commit()
         
-        return {"message": f"Revoked {count} sessions", "user_id": user_id}
+        return {"message": f"Revoked {count} sessions", "user_id": target_user_id}
 
 
 # =============================================================================
@@ -318,7 +319,7 @@ async def revoke_user_sessions(
 
 @router.get("/sessions", response_model=SessionListResponse, summary="List Active Sessions")
 async def list_active_sessions(
-    admin: User = Depends(require_admin),
+    admin: AuthenticatedUser = Depends(require_admin),
     db=Depends(get_session)
 ):
     """
@@ -352,10 +353,10 @@ async def list_active_sessions(
         return SessionListResponse(sessions=sessions_list, total=len(sessions_list))
 
 
-@router.delete("/sessions/{session_id}", summary="Revoke Single Session")
+@router.delete("/sessions/{target_session_id}", summary="Revoke Single Session")
 async def revoke_session(
-    session_id: str,
-    admin: User = Depends(require_admin),
+    target_session_id: str = Path(..., description="Session ID to revoke"),
+    admin: AuthenticatedUser = Depends(require_admin),
     db=Depends(get_session)
 ):
     """
@@ -365,7 +366,7 @@ async def revoke_session(
     """
     async with db as session:
         result = await session.execute(
-            select(Session).where(Session.session_id == UUID(session_id))
+            select(Session).where(Session.session_id == UUID(target_session_id))
         )
         sess = result.scalar_one_or_none()
         
@@ -376,4 +377,4 @@ async def revoke_session(
         session.add(sess)
         await session.commit()
         
-        return {"message": "Session revoked", "session_id": session_id}
+        return {"message": "Session revoked", "session_id": target_session_id}
