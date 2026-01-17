@@ -1,0 +1,50 @@
+# BioMind Nexus - Docker Compose
+# 
+# Starts all required databases for development.
+# Usage: docker-compose up -d
+#
+# Services:
+#   - neo4j: Knowledge graph database (Drug-Gene-Disease relationships)
+#   - (Cassandra disabled for Python 3.12 compatibility)
+
+services:
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: biomind-neo4j
+    ports:
+      - "7474:7474"  # HTTP Browser
+      - "7687:7687"  # Bolt protocol
+    environment:
+      - NEO4J_AUTH=neo4j/biomind2024
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_memory_heap_initial__size=512m
+      - NEO4J_dbms_memory_heap_max__size=1G
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+
+# To start:
+#   docker-compose up -d
+#
+# To check status:
+#   docker-compose ps
+#
+# To view logs:
+#   docker-compose logs -f neo4j
+#
+# To stop:
+#   docker-compose down
+#
+# Neo4j Browser: http://localhost:7474
+# Default credentials: neo4j / biomind2024

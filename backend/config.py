@@ -38,12 +38,12 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
     
     # Groq API Configuration
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY")
-    GROQ_MODEL: str = "openai/gpt-oss-20b"
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.1-70b-versatile"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
     
     # PubMed API Configuration 
-    PUBMED_EMAIL: str = os.getenv("PUBMED_EMAIL")
+    PUBMED_EMAIL: str = ""
     PUBMED_MAX_RESULTS: int = 20
     
     class Config:
