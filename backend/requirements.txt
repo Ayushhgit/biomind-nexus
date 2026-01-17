@@ -27,6 +27,12 @@ langgraph
 langchain-core
 
 # -------------------------
+# LLM Integration 
+# -------------------------
+google-generativeai
+pydantic-settings
+
+# -------------------------
 # Biomedical NLP
 # -------------------------
 transformers
