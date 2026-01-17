@@ -37,7 +37,11 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = ""  # Must be set via environment
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # Short-lived tokens
+    SESSION_EXPIRE_HOURS: int = 24  # Server-side session duration
+    
+    # Database (PostgreSQL for production, SQLite for development)
+    DATABASE_URL: str = "sqlite:///./biomind.db"
     
     # CORS
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
