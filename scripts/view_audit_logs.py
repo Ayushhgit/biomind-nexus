@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """
-BioMind Nexus - Audit Log Viewer
-
 Utility script to view audit logs from Cassandra.
 Usage: python scripts/view_audit_logs.py [limit]
 """

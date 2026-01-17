@@ -210,22 +210,13 @@ class BioBERTEntityExtractor:
         if self._pipeline is not None:
             return
         
-        from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
-        
-        # Use a general biomedical NER model
-        model_id = "alvaroalon2/biobert_diseases_ner"
-        
-        try:
-            self._pipeline = pipeline(
-                "ner",
-                model=model_id,
-                tokenizer=model_id,
-                device=0 if self.device == "cuda" else -1,
-                aggregation_strategy="simple"
-            )
-        except Exception:
-            # Fallback to base BioBERT with custom NER
-            self._pipeline = None
+        # Disabled due to transformers pipeline import instability in current env
+        # Falling back to robust pattern-based extraction
+        self._pipeline = None
+        return
+
+        # from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
+        # ... (rest commented out)
     
     def extract_entities(self, text: str) -> List[Dict]:
         """
@@ -467,3 +458,13 @@ def get_pubmedbert_scorer(device: str = "cpu") -> PubMedBERTScorer:
     if _pubmedbert_scorer is None:
         _pubmedbert_scorer = PubMedBERTScorer(device=device)
     return _pubmedbert_scorer
+
+def cleanup_resources():
+    """Explicitly clean up global models to prevent PyTorch shutdown crashes."""
+    global _biobert_extractor, _pubmedbert_scorer
+    _biobert_extractor = None
+    _pubmedbert_scorer = None
+    
+    # Force gc
+    import gc
+    gc.collect()
