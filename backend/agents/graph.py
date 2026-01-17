@@ -1,99 +1,193 @@
 """
-BioMind Nexus - LangGraph Agent Orchestration
+LangGraph Agent Orchestration - Drug Repurposing Workflow
 
-Defines the agent execution graph using LangGraph.
-This is the central orchestration layer that routes queries to specialized agents.
+Deterministic multi-agent workflow with MANDATORY simulation step.
+
+Workflow (no bypasses for simulation or safety):
+    Entity Extraction → Literature → Pathway Simulation → Reasoning → Ranking → Safety → Output
 
 Architecture:
-- Agents are nodes in a directed graph
-- Edges define conditional routing based on query type
-- All agent outputs are validated against schemas before returning
-
-Security: Agents do NOT have direct database access.
-All data retrieval goes through typed service layers.
+- Deterministic execution path (no free-form chat)
+- Simulation ALWAYS runs (no bypass)
+- Safety ALWAYS runs (no bypass)
+- Agents do NOT access databases (data flows via state)
 """
 
-from typing import TypedDict, Literal, Annotated
+from typing import Annotated, Literal
 from langgraph.graph import StateGraph, END
 
-from backend.agents.base_agent import BaseAgent
+from backend.agents.schemas import AgentState, DrugRepurposingQuery
+from backend.agents.entity_extraction import EntityExtractionAgent
 from backend.agents.literature import LiteratureAgent
+from backend.agents.pathway_reasoning import PathwayReasoningAgent
 from backend.agents.reasoning import ReasoningAgent
+from backend.agents.ranking import RankingAgent
 from backend.agents.safety import SafetyAgent
-from backend.agents.schemas import AgentState, QueryType
 
 
-def create_agent_graph() -> StateGraph:
+# =============================================================================
+# Agent Instances
+# =============================================================================
+
+_entity_extraction_agent = EntityExtractionAgent()
+_literature_agent = LiteratureAgent()
+_pathway_reasoning_agent = PathwayReasoningAgent()
+_reasoning_agent = ReasoningAgent()
+_ranking_agent = RankingAgent()
+_safety_agent = SafetyAgent()
+
+
+# =============================================================================
+# Node Functions
+# =============================================================================
+
+async def entity_extraction_node(state: AgentState) -> AgentState:
+    """Extract biomedical entities from query."""
+    return await _entity_extraction_agent.invoke(state)
+
+
+async def literature_node(state: AgentState) -> AgentState:
+    """Retrieve literature evidence for entities."""
+    return await _literature_agent.invoke(state)
+
+
+async def pathway_simulation_node(state: AgentState) -> AgentState:
+    """Run deterministic pathway simulation."""
+    return await _pathway_reasoning_agent.invoke(state)
+
+
+async def reasoning_node(state: AgentState) -> AgentState:
+    """Generate drug repurposing hypotheses."""
+    return await _reasoning_agent.invoke(state)
+
+
+async def ranking_node(state: AgentState) -> AgentState:
+    """Rank and filter candidates."""
+    return await _ranking_agent.invoke(state)
+
+
+async def safety_node(state: AgentState) -> AgentState:
+    """Final safety validation gate."""
+    return await _safety_agent.invoke(state)
+
+
+# =============================================================================
+# Edge Conditions
+# =============================================================================
+
+def should_continue_to_ranking(state: AgentState) -> Literal["ranking", "safety"]:
+    """Check if we have candidates to rank."""
+    candidates = state.get("drug_candidates", [])
+    return "ranking" if candidates else "safety"
+
+
+# =============================================================================
+# Graph Construction
+# =============================================================================
+
+def create_drug_repurposing_graph() -> StateGraph:
     """
-    Construct the LangGraph execution graph for agent orchestration.
+    Construct the LangGraph for drug repurposing workflow.
     
-    Graph Structure:
-        [START] -> router -> literature_agent -> safety_check -> [END]
-                          -> reasoning_agent  -> safety_check -> [END]
+    Graph Structure (MANDATORY simulation and safety):
     
-    All paths pass through safety_check before returning results.
-    
-    Returns:
-        Compiled StateGraph ready for execution
+        [START]
+           │
+           ▼
+      Entity Extraction
+           │
+           ▼
+       Literature
+           │
+           ▼
+    Pathway Simulation  ◄── MANDATORY (no bypass)
+           │
+           ▼
+       Reasoning
+           │
+           ▼
+       (candidates?)
+         ╱     ╲
+        ▼       ▼
+    Ranking  ──►  Safety  ◄── MANDATORY
+        │           │
+        └──────────►│
+                    ▼
+                  [END]
     """
+    workflow = StateGraph(AgentState)
     
-    # Initialize agents
-    literature = LiteratureAgent()
-    reasoning = ReasoningAgent()
-    safety = SafetyAgent()
+    # Add nodes
+    workflow.add_node("entity_extraction", entity_extraction_node)
+    workflow.add_node("literature", literature_node)
+    workflow.add_node("pathway_simulation", pathway_simulation_node)
+    workflow.add_node("reasoning", reasoning_node)
+    workflow.add_node("ranking", ranking_node)
+    workflow.add_node("safety", safety_node)
     
-    # Define the graph
-    graph = StateGraph(AgentState)
+    # Set entry point
+    workflow.set_entry_point("entity_extraction")
     
-    # Add nodes (agent execution steps)
-    graph.add_node("router", route_query)
-    graph.add_node("literature_agent", literature.invoke)
-    graph.add_node("reasoning_agent", reasoning.invoke)
-    graph.add_node("safety_check", safety.invoke)
+    # Define edges - LINEAR until reasoning, then conditional
+    workflow.add_edge("entity_extraction", "literature")
+    workflow.add_edge("literature", "pathway_simulation")  # MANDATORY
+    workflow.add_edge("pathway_simulation", "reasoning")   # MANDATORY
     
-    # Define edges
-    graph.set_entry_point("router")
-    
-    # Conditional routing based on query type
-    graph.add_conditional_edges(
-        "router",
-        determine_agent,
+    # Reasoning -> Ranking OR Safety
+    workflow.add_conditional_edges(
+        "reasoning",
+        should_continue_to_ranking,
         {
-            QueryType.LITERATURE: "literature_agent",
-            QueryType.REASONING: "reasoning_agent",
+            "ranking": "ranking",
+            "safety": "safety"
         }
     )
     
-    # All agents route to safety check
-    graph.add_edge("literature_agent", "safety_check")
-    graph.add_edge("reasoning_agent", "safety_check")
+    # Ranking -> Safety (MANDATORY)
+    workflow.add_edge("ranking", "safety")
     
-    # Safety check ends the graph
-    graph.add_edge("safety_check", END)
+    # Safety -> END
+    workflow.add_edge("safety", END)
     
-    return graph.compile()
+    return workflow.compile()
 
 
-def route_query(state: AgentState) -> AgentState:
+# Compiled graph instance
+drug_repurposing_graph = create_drug_repurposing_graph()
+
+
+# =============================================================================
+# Entry Point
+# =============================================================================
+
+async def run_drug_repurposing_workflow(
+    query: DrugRepurposingQuery,
+    user_id: str,
+    request_id: str
+) -> AgentState:
     """
-    Initial routing node that classifies the incoming query.
+    Execute the drug repurposing workflow.
     
-    Updates state with determined query_type for conditional routing.
-    """
-    # TODO: Implement query classification logic
-    # For now, default to literature search
-    state["query_type"] = QueryType.LITERATURE
-    return state
-
-
-def determine_agent(state: AgentState) -> QueryType:
-    """
-    Edge condition function for routing to appropriate agent.
+    Args:
+        query: Structured query input
+        user_id: User identifier for audit
+        request_id: Request identifier for tracing
     
-    Returns the query_type to select the correct branch.
+    Returns:
+        Final AgentState with all outputs
     """
-    return state.get("query_type", QueryType.LITERATURE)
+    initial_state: AgentState = {
+        "query": query,
+        "user_id": user_id,
+        "request_id": request_id,
+        "step_history": [],
+        "errors": [],
+    }
+    
+    final_state = await drug_repurposing_graph.ainvoke(initial_state)
+    
+    return final_state
 
 
-# Compiled graph instance for import
-agent_graph = create_agent_graph()
+# Legacy alias
+agent_graph = drug_repurposing_graph

@@ -1,124 +1,224 @@
 """
-BioMind Nexus - Reasoning Agent
+Reasoning Agent - Hypothesis Generation
 
-Specialized agent for hypothesis generation and causal reasoning.
-Leverages the knowledge graph to identify mechanistic pathways.
+Consumes SimulationResult from PathwayReasoningAgent.
+Generates structured DrugCandidate outputs using LLM.
 
-Responsibilities:
-- Generate hypotheses from query context
-- Traverse knowledge graph for supporting evidence
-- Identify causal chains and pathway connections
-- Score hypothesis plausibility
-
-Security: Graph queries go through service layer. No direct Neo4j access.
+Does NOT perform pathway logic itself - that is done by PathwayReasoningAgent.
+This agent synthesizes simulation results into human-readable hypotheses.
 """
 
 from typing import List, Dict, Any
+import uuid
+from datetime import datetime
 
 from backend.agents.base_agent import BaseAgent
-from backend.agents.schemas import AgentState, Hypothesis
+from backend.agents.schemas import (
+    AgentState,
+    BiomedicalEntity,
+    EntityType,
+    EvidenceItem,
+    MechanismPath,
+    DrugCandidate,
+    Citation,
+    SimulationResult,
+    PathwayPath,
+)
+from backend.services.llm_service import (
+    generate_hypothesis_with_llm,
+)
 
 
 class ReasoningAgent(BaseAgent):
     """
-    Agent for hypothesis generation and causal reasoning.
+    Hypothesis generation agent.
     
-    Workflow:
-    1. Parse query to identify reasoning target
-    2. Retrieve relevant subgraph from knowledge graph
-    3. Generate candidate hypotheses
-    4. Score hypotheses based on graph evidence
-    5. Return ranked hypotheses with explanations
+    Consumes:
+        - simulation_result: PathwayPath data from simulation
+        - extracted_entities: Drug/disease entities
+        - literature_evidence: Supporting citations
+    
+    Produces:
+        - drug_candidates: List of structured hypotheses
+        - mechanism_paths: List of MechanismPath objects
     """
     
     name = "reasoning_agent"
-    description = "Generates and evaluates biomedical hypotheses"
-    version = "0.1.0"
+    description = "Generates drug repurposing hypotheses from simulation results"
+    version = "3.0.0"
     
-    def _initialize_services(self):
-        """Initialize reasoning services."""
-        # TODO: Initialize graph query service
-        # TODO: Initialize LLM for hypothesis generation
-        pass
+    required_input_keys = ["query", "extracted_entities"]
+    output_keys = ["mechanism_paths", "drug_candidates"]
     
-    async def invoke(self, state: AgentState) -> AgentState:
+    async def process(self, state: AgentState) -> AgentState:
         """
-        Execute hypothesis generation and evaluation.
-        
-        Args:
-            state: Contains 'query' and optional 'context' entities
-        
-        Returns:
-            State updated with 'reasoning_response' containing
-            ranked hypotheses and supporting evidence
+        Generate hypotheses from simulation results.
         """
-        query = state.get("query", "")
-        context_entities = state.get("entities_extracted", [])
+        entities: List[BiomedicalEntity] = state.get("extracted_entities", [])
+        evidence: List[EvidenceItem] = state.get("literature_evidence", [])
+        citations: List[Citation] = state.get("literature_citations", [])
+        simulation: SimulationResult = state.get("simulation_result")
         
-        # TODO: Implement reasoning logic
-        # 1. Identify target entities from query
-        # 2. Retrieve relevant subgraph
-        # 3. Generate candidate hypotheses
-        # 4. Evaluate against graph structure
-        # 5. Rank and explain
+        drugs = [e for e in entities if e.entity_type == EntityType.DRUG]
+        diseases = [e for e in entities if e.entity_type == EntityType.DISEASE]
         
-        response = self._create_response(
-            content=[],  # List of Hypothesis objects
-            confidence=0.0,
-            metadata={"subgraph_size": 0}
-        )
+        mechanism_paths: List[MechanismPath] = []
+        drug_candidates: List[DrugCandidate] = []
         
-        state["reasoning_response"] = response
+        # Handle case with no simulation or no valid paths
+        if not simulation or not simulation.has_valid_paths:
+            if drugs and diseases:
+                # Generate fallback hypothesis without simulation
+                candidate = await self._generate_fallback_candidate(
+                    drug=drugs[0],
+                    disease=diseases[0],
+                    evidence=evidence,
+                    citations=citations
+                )
+                if candidate:
+                    drug_candidates.append(candidate)
+        else:
+            # Generate hypotheses from simulation paths
+            for path in simulation.valid_paths:
+                mechanism = self._pathway_to_mechanism(path, entities)
+                if mechanism:
+                    mechanism_paths.append(mechanism)
+            
+            # Generate candidates for drug-disease pair
+            if drugs and diseases:
+                candidate = await self._generate_candidate_from_simulation(
+                    drug=drugs[0],
+                    disease=diseases[0],
+                    simulation=simulation,
+                    mechanism_paths=mechanism_paths,
+                    evidence=evidence,
+                    citations=citations
+                )
+                if candidate:
+                    drug_candidates.append(candidate)
+        
+        state["mechanism_paths"] = mechanism_paths
+        state["drug_candidates"] = drug_candidates
         
         return state
     
-    async def _retrieve_subgraph(
-        self, 
-        entity_ids: List[str], 
-        max_depth: int = 3
-    ) -> Dict[str, Any]:
-        """
-        Retrieve relevant subgraph around target entities.
+    def _pathway_to_mechanism(
+        self,
+        path: PathwayPath,
+        entities: List[BiomedicalEntity]
+    ) -> MechanismPath:
+        """Convert PathwayPath to MechanismPath schema."""
+        # Build entity nodes
+        nodes = []
+        entity_lookup = {e.name.lower(): e for e in entities}
         
-        Args:
-            entity_ids: Starting node IDs
-            max_depth: Maximum traversal depth
+        if path.edges:
+            # Add source of first edge
+            source_name = path.edges[0].source_entity
+            source_entity = entity_lookup.get(source_name.lower())
+            if source_entity:
+                nodes.append(source_entity)
+            else:
+                nodes.append(BiomedicalEntity(
+                    id=f"inferred:{source_name.lower()}",
+                    name=source_name,
+                    entity_type=EntityType.PATHWAY
+                ))
+            
+            # Add targets of each edge
+            for edge in path.edges:
+                target_name = edge.target_entity
+                target_entity = entity_lookup.get(target_name.lower())
+                if target_entity:
+                    nodes.append(target_entity)
+                else:
+                    nodes.append(BiomedicalEntity(
+                        id=f"inferred:{target_name.lower()}",
+                        name=target_name,
+                        entity_type=EntityType.PATHWAY
+                    ))
         
-        Returns:
-            Subgraph with nodes and edges
-        """
-        # TODO: Query graph service
-        return {"nodes": [], "edges": []}
+        edge_types = [e.relation.value for e in path.edges]
+        
+        return MechanismPath(
+            path_id=path.path_id,
+            nodes=nodes,
+            edge_types=edge_types,
+            confidence=path.path_confidence,
+            supporting_citations=[]
+        )
     
-    async def _generate_hypotheses(
-        self, 
-        query: str, 
-        subgraph: Dict[str, Any]
-    ) -> List[Hypothesis]:
-        """
-        Generate candidate hypotheses using LLM + graph context.
+    async def _generate_candidate_from_simulation(
+        self,
+        drug: BiomedicalEntity,
+        disease: BiomedicalEntity,
+        simulation: SimulationResult,
+        mechanism_paths: List[MechanismPath],
+        evidence: List[EvidenceItem],
+        citations: List[Citation]
+    ) -> DrugCandidate:
+        """Generate DrugCandidate from simulation results."""
         
-        Returns:
-            List of hypothesis objects with scores
-        """
-        # TODO: Implement LLM-based hypothesis generation
-        return []
+        # Collect evidence summaries
+        evidence_summaries = [e.description[:200] for e in evidence[:5]]
+        
+        # Add simulation path summaries
+        for path in simulation.valid_paths[:3]:
+            evidence_summaries.append(path.biological_rationale)
+        
+        # Generate hypothesis using LLM
+        hypothesis_result = await generate_hypothesis_with_llm(
+            drug=drug.name,
+            disease=disease.name,
+            evidence_summaries=evidence_summaries
+        )
+        
+        # Calculate overall score from simulation + evidence
+        sim_score = simulation.overall_plausibility
+        evidence_score = len(evidence) / 20.0  # Normalize
+        overall_score = (sim_score * 0.6) + (min(evidence_score, 0.4))
+        
+        return DrugCandidate(
+            candidate_id=f"cand_{uuid.uuid4().hex[:8]}",
+            drug=drug,
+            target_disease=disease,
+            hypothesis=hypothesis_result.get("hypothesis", f"{drug.name} may treat {disease.name}."),
+            mechanism_summary=hypothesis_result.get("mechanism_summary", simulation.top_path.biological_rationale if simulation.top_path else ""),
+            overall_score=min(1.0, overall_score),
+            confidence=hypothesis_result.get("confidence", sim_score),
+            novelty_score=0.6,
+            mechanism_paths=mechanism_paths[:3],
+            evidence_items=evidence[:5],
+            citations=citations[:5]
+        )
     
-    async def _score_hypothesis(
-        self, 
-        hypothesis: Hypothesis, 
-        subgraph: Dict[str, Any]
-    ) -> float:
-        """
-        Score a hypothesis based on graph evidence.
+    async def _generate_fallback_candidate(
+        self,
+        drug: BiomedicalEntity,
+        disease: BiomedicalEntity,
+        evidence: List[EvidenceItem],
+        citations: List[Citation]
+    ) -> DrugCandidate:
+        """Generate candidate when no simulation paths available."""
         
-        Scoring factors:
-        - Path existence between entities
-        - Edge confidence scores
-        - Published evidence count
+        evidence_summaries = [e.description[:200] for e in evidence[:5]]
         
-        Returns:
-            Plausibility score (0.0 - 1.0)
-        """
-        # TODO: Implement scoring logic
-        return 0.0
+        hypothesis_result = await generate_hypothesis_with_llm(
+            drug=drug.name,
+            disease=disease.name,
+            evidence_summaries=evidence_summaries
+        )
+        
+        return DrugCandidate(
+            candidate_id=f"cand_{uuid.uuid4().hex[:8]}",
+            drug=drug,
+            target_disease=disease,
+            hypothesis=hypothesis_result.get("hypothesis", f"{drug.name} may have potential for {disease.name}."),
+            mechanism_summary=hypothesis_result.get("mechanism_summary", "Mechanism requires further investigation."),
+            overall_score=0.3,  # Lower score without simulation support
+            confidence=hypothesis_result.get("confidence", 0.3),
+            novelty_score=0.5,
+            mechanism_paths=[],
+            evidence_items=evidence[:5],
+            citations=citations[:5]
+        )
