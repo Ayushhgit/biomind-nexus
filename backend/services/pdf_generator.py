@@ -93,9 +93,82 @@ def generate_report_pdf(query_id: str, state: Dict[str, Any], timestamp: str) ->
     
     # Extract data from state
     query = state.get("query", {})
-    raw_query = query.raw_query if hasattr(query, "raw_query") else str(query)
-    drug_name = query.source_drug.name if hasattr(query, "source_drug") and query.source_drug else "Unknown Drug"
-    disease_name = query.target_disease.name if hasattr(query, "target_disease") and query.target_disease else "Unknown Disease"
+    raw_query = ""
+    drug_name = "Unknown Drug"
+    disease_name = "Unknown Disease"
+    
+    # Try to get raw query
+    if hasattr(query, "raw_query"):
+        raw_query = query.raw_query
+    elif isinstance(query, dict):
+        raw_query = query.get("raw_query", str(query))
+    else:
+        raw_query = str(query)
+    
+    # Try to get drug name from multiple sources
+    if hasattr(query, "source_drug") and query.source_drug:
+        drug_name = query.source_drug.name if hasattr(query.source_drug, "name") else str(query.source_drug)
+    elif isinstance(query, dict) and query.get("source_drug"):
+        sd = query.get("source_drug")
+        drug_name = sd.get("name", str(sd)) if isinstance(sd, dict) else str(sd)
+    
+    # Check extracted_entities for drug
+    if drug_name == "Unknown Drug":
+        entities = state.get("extracted_entities", [])
+        for entity in entities:
+            if hasattr(entity, "entity_type"):
+                if str(entity.entity_type).lower() == "drug":
+                    drug_name = entity.name if hasattr(entity, "name") else str(entity)
+                    break
+            elif isinstance(entity, dict) and entity.get("entity_type", "").lower() == "drug":
+                drug_name = entity.get("name", str(entity))
+                break
+    
+    # Check entities list for drug
+    if drug_name == "Unknown Drug":
+        entities = state.get("entities", [])
+        for entity in entities:
+            if isinstance(entity, dict) and entity.get("entity_type", "").lower() == "drug":
+                drug_name = entity.get("name", entity.get("id", "Unknown Drug"))
+                break
+    
+    # Try to get disease name from multiple sources
+    if hasattr(query, "target_disease") and query.target_disease:
+        disease_name = query.target_disease.name if hasattr(query.target_disease, "name") else str(query.target_disease)
+    elif isinstance(query, dict) and query.get("target_disease"):
+        td = query.get("target_disease")
+        disease_name = td.get("name", str(td)) if isinstance(td, dict) else str(td)
+    
+    # Check extracted_entities for disease
+    if disease_name == "Unknown Disease":
+        entities = state.get("extracted_entities", [])
+        for entity in entities:
+            if hasattr(entity, "entity_type"):
+                if str(entity.entity_type).lower() == "disease":
+                    disease_name = entity.name if hasattr(entity, "name") else str(entity)
+                    break
+            elif isinstance(entity, dict) and entity.get("entity_type", "").lower() == "disease":
+                disease_name = entity.get("name", str(entity))
+                break
+    
+    # Check entities list for disease
+    if disease_name == "Unknown Disease":
+        entities = state.get("entities", [])
+        for entity in entities:
+            if isinstance(entity, dict) and entity.get("entity_type", "").lower() == "disease":
+                disease_name = entity.get("name", entity.get("id", "Unknown Disease"))
+                break
+    
+    # Fallback: try to extract from raw query
+    if drug_name == "Unknown Drug" or disease_name == "Unknown Disease":
+        import re
+        # Simple extraction from raw query
+        if "metformin" in raw_query.lower():
+            drug_name = "Metformin" if drug_name == "Unknown Drug" else drug_name
+        if "cancer" in raw_query.lower():
+            disease_name = "Cancer" if disease_name == "Unknown Disease" else disease_name
+        if "depression" in raw_query.lower() or "depressant" in raw_query.lower():
+            disease_name = "Depression" if disease_name == "Unknown Disease" else disease_name
     
     # 1. Cover Page
     elements.append(Spacer(1, 1.5 * inch))

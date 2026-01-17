@@ -523,6 +523,39 @@ const LoadingOverlay = styled.div`
   }
 `;
 
+// Results Card Components
+const ResultsCard = styled.div`
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px -2px rgba(15, 23, 42, 0.06);
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+`;
+
+const CardHeader = styled.div`
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+    color: #64748b;
+  }
+`;
+
 // ============================================
 // Component
 // ============================================
@@ -741,67 +774,186 @@ export default function Dashboard({ user, onLogout }) {
           <>
             <PageHeader>
               <h1>Knowledge Graph Explorer</h1>
-              <p>Explore the biomedical knowledge graph of drugs, diseases, and pathways</p>
+              <p>Visualize the reasoning subgraph from your query</p>
             </PageHeader>
-            <EmptyState>
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <h3>Knowledge Graph</h3>
-              <p>Run a query to see the relevant subgraph visualization</p>
-              <SubmitButton onClick={() => setActiveView('query')} style={{ marginTop: '1rem' }}>
+            
+            {results ? (
+              <ResultsCard>
+                <CardHeader>
+                  <h3>
+                    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Reasoning Subgraph
+                  </h3>
+                  <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                    Query: {results.query_id}
+                  </span>
+                </CardHeader>
+                <div style={{ padding: '1.5rem' }}>
+                  <ResultsView 
+                    queryId={results.query_id}
+                    results={results}
+                    onDownloadPdf={handleDownloadPdf}
+                    isDownloading={isDownloadingPdf}
+                    viewMode="graph"
+                  />
+                </div>
+              </ResultsCard>
+            ) : (
+              <EmptyState>
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                Start Analysis
-              </SubmitButton>
-            </EmptyState>
+                <h3>No Graph Available</h3>
+                <p>Run a query to see the knowledge reasoning subgraph</p>
+                <SubmitButton onClick={() => setActiveView('query')} style={{ marginTop: '1rem' }}>
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  Start Analysis
+                </SubmitButton>
+              </EmptyState>
+            )}
           </>
         )}
 
-        {/* Query History View */}
+        {/* Query History View - Citations & Audit Trail */}
         {activeView === 'history' && (
           <>
             <PageHeader>
               <h1>Query History</h1>
-              <p>View your past drug repurposing analyses</p>
+              <p>View citations and audit trail from your analyses</p>
             </PageHeader>
-            <EmptyState>
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <h3>No History Yet</h3>
-              <p>Your completed queries will appear here for quick reference</p>
-              <SubmitButton onClick={() => setActiveView('query')} style={{ marginTop: '1rem' }}>
+            
+            {results ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                {/* Citations Panel */}
+                <ResultsCard>
+                  <CardHeader>
+                    <h3>
+                      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                      Citations
+                    </h3>
+                    <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                      {(results.evidence_items || []).length} sources
+                    </span>
+                  </CardHeader>
+                  <div style={{ padding: '1rem', maxHeight: '400px', overflowY: 'auto' }}>
+                    {(results.evidence_items || []).length > 0 ? (
+                      results.evidence_items.map((ev, i) => (
+                        <div key={i} style={{ padding: '0.75rem', borderBottom: '1px solid #f1f5f9', fontSize: '0.875rem' }}>
+                          <div style={{ fontWeight: 500, color: '#0f172a', marginBottom: '0.25rem' }}>
+                            {ev.citation?.title || ev.description || 'Evidence item'}
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem', color: '#64748b', fontSize: '0.75rem' }}>
+                            {ev.citation?.source_id && <span>PMID: {ev.citation.source_id}</span>}
+                            {ev.confidence && <span>Confidence: {(ev.confidence * 100).toFixed(0)}%</span>}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>
+                        No citations available
+                      </div>
+                    )}
+                  </div>
+                </ResultsCard>
+                
+                {/* Audit Trail Panel */}
+                <ResultsCard>
+                  <CardHeader>
+                    <h3>
+                      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                      Audit Trail
+                    </h3>
+                  </CardHeader>
+                  <div style={{ padding: '1rem' }}>
+                    {(results.steps_completed || []).length > 0 ? (
+                      results.steps_completed.map((step, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0', borderBottom: '1px solid #f1f5f9' }}>
+                          <span style={{ width: '24px', height: '24px', background: '#dcfce7', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <svg width="12" height="12" fill="#16a34a" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          </span>
+                          <span style={{ fontSize: '0.875rem', color: '#334155' }}>{step}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>
+                        No audit trail available
+                      </div>
+                    )}
+                    
+                    {/* Safety Status */}
+                    {results.safety && (
+                      <div style={{ marginTop: '1rem', padding: '0.75rem', background: results.approved ? '#dcfce7' : '#fef3c7', borderRadius: '8px' }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.875rem', color: results.approved ? '#166534' : '#92400e' }}>
+                          Safety: {results.approved ? 'Approved' : 'Flagged'}
+                        </div>
+                        {results.safety.flags_count > 0 && (
+                          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                            {results.safety.flags_count} warning(s)
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </ResultsCard>
+              </div>
+            ) : (
+              <EmptyState>
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                New Query
-              </SubmitButton>
-            </EmptyState>
+                <h3>No History Yet</h3>
+                <p>Run a query to see citations and audit trail</p>
+                <SubmitButton onClick={() => setActiveView('query')} style={{ marginTop: '1rem' }}>
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  New Query
+                </SubmitButton>
+              </EmptyState>
+            )}
           </>
         )}
 
-        {/* Reports/Dossiers View */}
+        {/* Reports/Dossiers View - Full Detailed View */}
         {activeView === 'reports' && (
           <>
             <PageHeader>
               <h1>Research Dossiers</h1>
-              <p>Download and manage your generated PDF reports</p>
+              <p>Complete analysis results with PDF export</p>
             </PageHeader>
-            <EmptyState>
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <h3>No Reports Yet</h3>
-              <p>Generate a report by running a query and clicking "Download PDF"</p>
-              <SubmitButton onClick={() => setActiveView('query')} style={{ marginTop: '1rem' }}>
+            
+            {results ? (
+              <ResultsView 
+                queryId={results.query_id}
+                results={results}
+                onDownloadPdf={handleDownloadPdf}
+                isDownloading={isDownloadingPdf}
+              />
+            ) : (
+              <EmptyState>
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                Create Report
-              </SubmitButton>
-            </EmptyState>
+                <h3>No Reports Yet</h3>
+                <p>Run a query to generate a complete research dossier</p>
+                <SubmitButton onClick={() => setActiveView('query')} style={{ marginTop: '1rem' }}>
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  Create Report
+                </SubmitButton>
+              </EmptyState>
+            )}
           </>
         )}
       </MainContent>
