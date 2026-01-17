@@ -92,12 +92,20 @@ def get_session_factory(engine):
     return session_factory
 
 
-def get_session(engine) -> Generator[Session, None, None]:
+from fastapi import Request
+
+def get_session(request: Request) -> Generator[Session, None, None]:
     """
     Dependency for getting database sessions.
+    
+    Retrieves engine from app.state.
     
     Yields:
         Database session (auto-closed after use)
     """
+    if not hasattr(request.app.state, "db_engine"):
+        raise RuntimeError("Database engine not initialized in app state")
+        
+    engine = request.app.state.db_engine
     with Session(engine) as session:
         yield session

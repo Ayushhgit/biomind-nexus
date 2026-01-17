@@ -214,9 +214,98 @@ class CassandraAuditClient:
     ) -> List[Dict[str, Any]]:
         """
         Query audit events within a time range.
+        
+        Args:
+            start_date: Start of query range
+            end_date: End of query range
+            user_id: Optional filter by user
+            event_type: Optional filter by event type
+            limit: Maximum number of results
+            
+        Returns:
+            List of audit event dictionaries
         """
-        # TODO: Implement with proper date partitioning
-        return []
+        import json
+        from datetime import timedelta
+        
+        events = []
+        current_date = start_date.date()
+        end = end_date.date()
+        
+        while current_date <= end and len(events) < limit:
+            try:
+                # Query each partition (date)
+                query = """
+                    SELECT partition_date, event_id, event_type, user_id, 
+                           request_id, action, resource, details, hash, 
+                           prev_hash, created_at 
+                    FROM audit_events 
+                    WHERE partition_date = %s 
+                    LIMIT %s
+                """
+                
+                results = self._session.execute(query, [current_date, limit - len(events)])
+                
+                for row in results:
+                    # Apply filters
+                    if user_id and row.user_id != user_id:
+                        continue
+                    if event_type and row.event_type != event_type:
+                        continue
+                    
+                    # Parse details JSON
+                    details = {}
+                    if row.details:
+                        try:
+                            details = json.loads(row.details)
+                        except:
+                            details = {"raw": row.details}
+                    
+                    events.append({
+                        "event_id": str(row.event_id),
+                        "partition_date": str(row.partition_date),
+                        "event_type": row.event_type,
+                        "user_id": row.user_id,
+                        "request_id": row.request_id or "",
+                        "action": row.action,
+                        "resource": row.resource or "",
+                        "details": details,
+                        "created_at": row.created_at.isoformat() if row.created_at else "",
+                        "hash": row.hash or "",
+                    })
+                    
+                    if len(events) >= limit:
+                        break
+                        
+            except Exception as e:
+                print(f"Error querying Cassandra for date {current_date}: {e}")
+            
+            current_date = current_date + timedelta(days=1)
+        
+        return events
+    
+    async def get_recent_events(
+        self,
+        limit: int = 50,
+        user_id: Optional[str] = None,
+        event_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent audit events (last 7 days).
+        Convenience method for admin dashboard.
+        """
+        from datetime import timedelta
+        
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=7)
+        
+        return await self.get_events(
+            start_date=start_date,
+            end_date=end_date,
+            user_id=user_id,
+            event_type=event_type,
+            limit=limit
+        )
 
     async def get_events_by_request(
         self,

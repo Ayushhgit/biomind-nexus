@@ -127,17 +127,56 @@ async def get_all_audit_logs(
     user_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    Get all audit logs (with fallback).
+    Get all audit logs from Cassandra (with file fallback).
+    
+    Args:
+        limit: Maximum number of logs to return
+        offset: Offset for pagination (simulated for Cassandra)
+        event_type: Optional filter by event type
+        user_id: Optional filter by user ID
+        
+    Returns:
+        List of audit log entries
     """
     client = get_cassandra_client()
     logs = []
 
+    # Try Cassandra first
     if client:
-        # Cassandra implementation (simplified query for now)
-        pass # To be fully implemented when Cassandra is online
+        try:
+            # Fetch more than needed to handle offset
+            raw_logs = await client.get_recent_events(
+                limit=limit + offset,
+                user_id=user_id,
+                event_type=event_type
+            )
+            
+            # Apply offset (Cassandra doesn't have native offset)
+            logs = raw_logs[offset:offset + limit]
+            
+            # Transform to consistent format
+            result = []
+            for log in logs:
+                result.append({
+                    "event_id": log.get("event_id", ""),
+                    "created_at": log.get("created_at", ""),
+                    "event_type": log.get("event_type", ""),
+                    "user_id": log.get("user_id", ""),
+                    "action": log.get("action", ""),
+                    "request_id": log.get("request_id", ""),
+                    "details": log.get("details", {})
+                })
+            
+            if result:
+                print(f"Info: Retrieved {len(result)} audit logs from Cassandra")
+                return result
+                
+        except Exception as e:
+            print(f"Warning: Cassandra query failed: {e}")
+            # Fall through to file fallback
     
     # File fallback if no logs from Cassandra or Cassandra missing
-    if not logs and FALLBACK_LOG_FILE.exists():
+    if FALLBACK_LOG_FILE.exists():
         try:
             with open(FALLBACK_LOG_FILE, "r") as f:
                 lines = f.readlines()
@@ -152,9 +191,6 @@ async def get_all_audit_logs(
                         if user_id and entry.get("user_id") != user_id:
                             continue
                             
-                        # Parse created_at to datetime object if needed, or keep string
-                        # For consistency with DB, let's keep it compatible
-                        
                         logs.append(entry)
                         
                         if len(logs) >= limit + offset:

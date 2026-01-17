@@ -476,13 +476,16 @@ export default function AdminDashboard({ user, onLogout }) {
 
     const formatDate = (dateStr) => {
         if (!dateStr) return '-';
-        const date = new Date(dateStr);
-        // Explicitly include time zone name if possible, or usually browser default is local
+        // Ensure date is treated as UTC if no timezone is specified
+        const utcDateStr = dateStr.endsWith('Z') ? dateStr : `${dateStr}Z`;
+        const date = new Date(utcDateStr);
+        
         return date.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
             dateStyle: 'medium',
-            timeStyle: 'long',
+            timeStyle: 'medium',
             hour12: true
-        });
+        }) + ' IST';
     };
 
     return (
