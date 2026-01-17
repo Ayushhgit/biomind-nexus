@@ -11,6 +11,7 @@ from backend.agents.schemas import (
     DrugRepurposingQuery,
     BiomedicalEntity,
     EntityType,
+    ExtractionMethod,
     
     # Output schemas
     DrugCandidate,
@@ -59,6 +60,7 @@ __all__ = [
     "DrugRepurposingQuery",
     "BiomedicalEntity",
     "EntityType",
+    "ExtractionMethod",
     
     # Output schemas
     "DrugCandidate",

@@ -52,6 +52,15 @@ class Severity(str, Enum):
     CRITICAL = "critical"
 
 
+class ExtractionMethod(str, Enum):
+    """Method used for entity/relation extraction."""
+    BIOBERT = "BioBERT"
+    PUBMEDBERT = "PubMedBERT"
+    LLM = "LLM"
+    PATTERN = "pattern"
+    MANUAL = "manual"
+
+
 # =============================================================================
 # Input Schemas
 # =============================================================================
@@ -63,6 +72,18 @@ class BiomedicalEntity(BaseModel):
     entity_type: EntityType
     aliases: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Extraction provenance
+    extraction_method: Optional[ExtractionMethod] = Field(
+        default=None,
+        description="Model/method used for extraction"
+    )
+    extraction_confidence: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score from extraction model"
+    )
     
     class Config:
         frozen = True  # Immutable
