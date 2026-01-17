@@ -267,34 +267,72 @@ async def _preload_graph_context(query: DrugRepurposingQuery) -> dict:
                     if candidate.lower() not in ["the", "a", "an", "this", "that"]:
                         drug_name = candidate
             
-            # Extended disease list
+            # Extended disease list (including psychiatric conditions)
             KNOWN_DISEASES = [
-                "cancer", "diabetes", "alzheimer", "parkinson", "covid",
-                "coronavirus", "breast cancer", "lung cancer", "leukemia",
-                "arthritis", "hypertension", "depression", "asthma",
-                "heart disease", "cardiovascular", "stroke", "obesity",
-                "inflammatory", "autoimmune", "multiple sclerosis", "lupus",
-                "rheumatoid", "psoriasis", "crohn", "colitis",
-                "hepatitis", "cirrhosis", "fibrosis", "copd",
-                "pneumonia", "influenza", "tuberculosis", "malaria",
-                "hiv", "aids", "sepsis", "infection",
+                # Cancers
+                "cancer", "breast cancer", "lung cancer", "leukemia",
                 "melanoma", "lymphoma", "glioblastoma", "carcinoma",
-                "tumor", "metastatic", "neoplasm", "sarcoma"
+                "tumor", "metastatic", "neoplasm", "sarcoma",
+                # Metabolic
+                "diabetes", "obesity", "metabolic syndrome",
+                # Neurological
+                "alzheimer", "parkinson", "multiple sclerosis", "epilepsy",
+                "neuropathy", "dementia", "huntington",
+                # Psychiatric (IMPORTANT for antidepressant queries)
+                "depression", "depressant", "anti-depressant", "antidepressant",
+                "anxiety", "bipolar", "schizophrenia", "ptsd", "ocd",
+                "adhd", "insomnia", "psychosis", "mania",
+                # Infectious  
+                "covid", "coronavirus", "pneumonia", "influenza",
+                "tuberculosis", "malaria", "hiv", "aids", "sepsis", "infection",
+                "hepatitis",
+                # Cardiovascular
+                "hypertension", "heart disease", "cardiovascular", "stroke",
+                "arrhythmia", "atherosclerosis",
+                # Inflammatory/Autoimmune
+                "arthritis", "rheumatoid", "lupus", "psoriasis",
+                "crohn", "colitis", "inflammatory", "autoimmune",
+                # Respiratory
+                "asthma", "copd", "fibrosis",
+                # Other
+                "cirrhosis", "addiction", "withdrawal", "pain", "chronic pain"
             ]
             
             # Try known diseases first
             for disease in KNOWN_DISEASES:
                 if disease in text and not disease_name:
-                    disease_name = disease.title()
+                    # Map variations to canonical names
+                    if disease in ["depressant", "anti-depressant", "antidepressant"]:
+                        disease_name = "Depression"
+                    else:
+                        disease_name = disease.title()
                     break
             
-            # Try "for X treatment/therapy" pattern  
+            # Try "as an anti-X" pattern (e.g., "as an anti-depressant")
             if not disease_name:
-                pattern = re.search(r'(?:for|treat|against|in)\s+([a-z]+(?:\s+[a-z]+)?)\s*(?:treatment|therapy|patients)?', text)
+                pattern = re.search(r'as\s+an?\s+(?:anti[-\s]?)(\w+)', text)
+                if pattern:
+                    condition = pattern.group(1).lower()
+                    # Map to disease
+                    if condition in ["depressant", "depression"]:
+                        disease_name = "Depression"
+                    elif condition in ["anxiety", "anxiolytic"]:
+                        disease_name = "Anxiety"
+                    elif condition in ["psychotic", "psychosis"]:
+                        disease_name = "Psychosis"
+                    elif condition in ["inflammatory", "inflammation"]:
+                        disease_name = "Inflammation"
+                    else:
+                        disease_name = condition.title()
+            
+            # Try "for X treatment/therapy" pattern (but NOT 'in')
+            if not disease_name:
+                pattern = re.search(r'(?:for|treat|against)\s+([a-z]+(?:\s+[a-z]+)?)\s*(?:treatment|therapy|patients)?', text)
                 if pattern:
                     candidate = pattern.group(1).title()
-                    # Filter out stopwords
-                    if candidate.lower() not in ["the", "a", "an", "this", "that", "its"]:
+                    # Extended stopword filter
+                    stopwords = ["the", "a", "an", "this", "that", "its", "be", "used", "be used", "being"]
+                    if candidate.lower() not in stopwords:
                         disease_name = candidate
 
         if drug_name and disease_name:

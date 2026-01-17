@@ -281,7 +281,7 @@ def _transform_state_to_response(query_id: str, state: dict) -> QueryResponse:
         for flag in safety_result.flags[:5]:  # Limit to 5 flags
             if flag.severity.value == "critical":
                 critical_count += 1
-            warnings.append(f"[{flag.severity.value}] {flag.description}")
+            warnings.append(f"[{flag.severity.value}] {flag.message}")
         
         safety = SafetyResponse(
             passed=safety_result.passed,

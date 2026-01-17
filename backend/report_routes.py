@@ -150,7 +150,7 @@ async def get_audit_trail(query_id: str):
         if not safety_result.passed:
             safety_decision = "blocked"
             if safety_result.flags:
-                safety_reason = safety_result.flags[0].description
+                safety_reason = safety_result.flags[0].message
         elif safety_result.flags:
             safety_decision = "flagged"
             safety_reason = f"{len(safety_result.flags)} warning(s)"
