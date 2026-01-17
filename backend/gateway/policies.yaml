@@ -4,7 +4,7 @@
 # Security: Deny-by-default. Only explicitly listed permissions are granted.
 #
 # Role Definitions:
-#   admin      - Full system access for local development
+#   admin      - Full system access including user management
 #   researcher - Can invoke agents and read results
 #   reviewer   - Can review and generate dossiers
 #   auditor    - Read-only access to audit logs
@@ -21,6 +21,7 @@ roles:
     - export:audit
     - generate:dossier
     - export:dossier
+    - manage:users
 
   researcher:
     - query:agents
