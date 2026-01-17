@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import styled, { createGlobalStyle } from 'styled-components';
 import LoginPage from './components/LoginPage';
 import Dashboard from './components/Dashboard';
+import AdminDashboard from './components/AdminDashboard';
 import { getStoredAuth, getCurrentUser } from './api/auth';
 
 /**
  * BioMind Nexus - Main Application
  * 
- * CSS-in-JS implementation with styled-components.
- * Handles authentication state and routing between Login and Dashboard.
+ * Role-based routing:
+ * - Admin users → AdminDashboard (audit logs, user management)
+ * - Researcher users → Dashboard (query interface, knowledge graph)
  */
 
 // ============================================
@@ -57,7 +59,7 @@ const LoadingSpinner = styled.div`
   width: 40px;
   height: 40px;
   border: 3px solid #e2e8f0;
-  border-top-color: #0d9488;
+  border-top-color: #2563eb;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 
@@ -122,15 +124,27 @@ export default function App() {
         );
     }
 
-    // Render Login or Dashboard based on auth state
+    // Route based on authentication and role
+    const renderDashboard = () => {
+        if (!isAuthenticated) {
+            return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+        }
+
+        // Role-based routing
+        const userRole = user?.role?.toLowerCase();
+
+        if (userRole === 'admin') {
+            return <AdminDashboard user={user} onLogout={handleLogout} />;
+        }
+
+        // Default to researcher dashboard
+        return <Dashboard user={user} onLogout={handleLogout} />;
+    };
+
     return (
         <>
             <GlobalStyle />
-            {isAuthenticated ? (
-                <Dashboard user={user} onLogout={handleLogout} />
-            ) : (
-                <LoginPage onLoginSuccess={handleLoginSuccess} />
-            )}
+            {renderDashboard()}
         </>
     );
 }
