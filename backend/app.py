@@ -162,6 +162,7 @@ async def root():
     }
 
 
-# TODO: Register agent routes
-# from backend.agents.routes import router as agents_router
-# app.include_router(agents_router, prefix="/api/v1/agents", tags=["agents"])
+# Register agent routes
+from backend.agents.routes import router as agents_router
+app.include_router(agents_router, prefix="/api/v1/agents", tags=["agents"])
+
