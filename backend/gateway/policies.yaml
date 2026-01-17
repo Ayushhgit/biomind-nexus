@@ -1,0 +1,48 @@
+# BioMind Nexus - RBAC Policy Configuration
+#
+# Defines role-to-permission mappings.
+# Security: Deny-by-default. Only explicitly listed permissions are granted.
+#
+# Role Definitions:
+#   admin      - Full system access for local development
+#   researcher - Can invoke agents and read results
+#   reviewer   - Can review and generate dossiers
+#   auditor    - Read-only access to audit logs
+
+roles:
+  admin:
+    - query:agents
+    - invoke:literature_agent
+    - invoke:reasoning_agent
+    - invoke:safety_agent
+    - read:graph
+    - write:graph
+    - read:audit
+    - export:audit
+    - generate:dossier
+    - export:dossier
+
+  researcher:
+    - query:agents
+    - invoke:literature_agent
+    - invoke:reasoning_agent
+    - invoke:safety_agent
+    - read:graph
+    - generate:dossier
+
+  reviewer:
+    - query:agents
+    - read:graph
+    - read:audit
+    - generate:dossier
+    - export:dossier
+
+  auditor:
+    - read:audit
+    - export:audit
+
+# Resource-specific policies (future extension)
+# resources:
+#   dossier:
+#     owner_only: true
+#     shareable: false
