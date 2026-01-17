@@ -13,7 +13,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Path
+from fastapi import APIRouter, HTTPException, Depends, Query, Path, Body
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
@@ -215,9 +215,9 @@ async def list_users(
 @router.put("/users/{target_user_id}", summary="Update User")
 async def update_user(
     target_user_id: str = Path(..., description="User ID to update"),
-    update: UserUpdateRequest = None,
     admin: AuthenticatedUser = Depends(require_admin),
-    db=Depends(get_session)
+    db=Depends(get_session),
+    update: UserUpdateRequest = Body(...)
 ):
     """
     Update user status or role.
@@ -335,7 +335,6 @@ async def list_active_sessions(
 async def revoke_session(
     target_session_id: str = Path(..., description="Session ID to revoke"),
     admin: AuthenticatedUser = Depends(require_admin),
-
     db=Depends(get_session)
 ):
     """
