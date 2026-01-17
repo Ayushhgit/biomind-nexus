@@ -208,7 +208,7 @@ def generate_report_pdf(query_id: str, state: Dict[str, Any], timestamp: str) ->
         if hasattr(safety, "flags") and safety.flags:
             elements.append(Paragraph(f"<b>Flags:</b> {len(safety.flags)} warning(s)", body_style))
             for flag in safety.flags[:3]:
-                desc = flag.description if hasattr(flag, "description") else str(flag)
+                desc = flag.message if hasattr(flag, "message") else str(flag)
                 elements.append(Paragraph(f"• {desc}", body_style))
     else:
         elements.append(Paragraph("<b>Safety Decision:</b> APPROVED (no flags)", body_style))

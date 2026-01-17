@@ -160,10 +160,10 @@ async def get_pathway_edges(
         for row in results:
             relation = _map_relation_type(row.get("relation", ""))
             edges.append(BiologicalEdge(
-                source_entity=row.get("source_name", ""),
-                target_entity=row.get("target_name", ""),
+                source_entity=row.get("source_name", "") or "",
+                target_entity=row.get("target_name", "") or "",
                 relation=relation,
-                confidence=row.get("confidence", 0.7),
+                confidence=row.get("confidence") or 0.7,  # Default if None
                 evidence_count=1,
                 pmid_support=[]
             ))

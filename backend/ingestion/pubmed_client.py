@@ -30,14 +30,21 @@ class PubMedClient:
     def __init__(self, email: str = "biomind@example.com", api_key: Optional[str] = None):
         self.email = email
         self.api_key = api_key
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self._client: Optional[httpx.AsyncClient] = None
         # 1.0s delay between requests to be safe (NCBI limit is 3/s with key, 1/s without)
         self._delay = 0.35 if api_key else 1.0
         self._last_request_time = 0
         self._seen_pmids: Set[str] = set()
 
+    def _ensure_client(self) -> httpx.AsyncClient:
+        """Ensure we have an open client, recreating if necessary."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=30.0)
+        return self._client
+
     async def close(self):
-        await self.client.aclose()
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
     async def _rate_limit(self):
         """Ensure we don't exceed rate limits."""
@@ -69,7 +76,8 @@ class PubMedClient:
             params["api_key"] = self.api_key
 
         try:
-            response = await self.client.get(f"{self.BASE_URL}/esearch.fcgi", params=params)
+            client = self._ensure_client()
+            response = await client.get(f"{self.BASE_URL}/esearch.fcgi", params=params)
             response.raise_for_status()
             data = response.json()
             
@@ -116,7 +124,8 @@ class PubMedClient:
                 params["api_key"] = self.api_key
 
             try:
-                response = await self.client.get(f"{self.BASE_URL}/efetch.fcgi", params=params)
+                client = self._ensure_client()
+                response = await client.get(f"{self.BASE_URL}/efetch.fcgi", params=params)
                 response.raise_for_status()
                 
                 # Parse XML
