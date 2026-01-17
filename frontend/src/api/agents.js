@@ -4,7 +4,7 @@
  * Handles all drug repurposing workflow requests to the FastAPI backend.
  */
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = 'http://10.20.72.65:8000/api/v1';
 
 /**
  * Get authentication headers

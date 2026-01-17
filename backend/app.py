@@ -174,3 +174,6 @@ async def root():
 from backend.agents.routes import router as agents_router
 app.include_router(agents_router, prefix="/api/v1/agents", tags=["agents"])
 
+# Register admin routes
+from backend.admin.routes import router as admin_router
+app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
