@@ -208,12 +208,16 @@ async def run_drug_repurposing_workflow(
 
 async def _preload_graph_context(query: DrugRepurposingQuery) -> dict:
     """
-    Pre-load graph data via DAL.
+    Pre-load and optionally INGEST graph data via DAL.
     
-    Called BEFORE agents run. Agents only see structured data in AgentState.
+    1. Identify Drug/Disease from query
+    2. Check if knowledge exists (via IngestionPipeline)
+    3. If missing, Pipeline fetches papers & persists facts
+    4. Return loaded graph context
     """
     try:
-        from backend.dal.neo4j_dal import load_graph_context_for_query
+        # Lazy import ingestion to avoid circular deps/startup overhead
+        from backend.ingestion.ingestion_pipeline import get_ingestion_pipeline
         
         # Extract drug/disease from query if pre-specified
         drug_name = query.source_drug.name if query.source_drug else None
@@ -221,14 +225,29 @@ async def _preload_graph_context(query: DrugRepurposingQuery) -> dict:
         
         # If no pre-extracted entities, try parsing from raw query
         if not drug_name or not disease_name:
-            # Simple heuristic: look for common patterns
-            # In production, this would be more sophisticated
-            return {}
+            # Simple heuristic extraction for ingestion trigger
+            # (Real extraction happens in agents, this is just for pre-loading)
+            import re
+            text = query.raw_query.lower()
+            
+            # Very basic patterns just to trigger ingestion if obvious
+            # In production, use a lightweight NER here
+            # For now, rely on parsed query or skip ingestion if ambiguous
+            pass
+
+        if drug_name and disease_name:
+            print(f"Orchestrator: Check ingestion for {drug_name} <-> {disease_name}")
+            pipeline = get_ingestion_pipeline()
+            # This handles Check -> Fetch? -> Persist? -> Load
+            context = await pipeline.ingest_if_missing(drug_name, disease_name)
+            return context
+            
+        print("Orchestrator: Insufficient entities for specific graph loading.")
+        return {}
         
-        return await load_graph_context_for_query(drug_name, disease_name)
     except Exception as e:
         # Graceful degradation: agents can still work without graph data
-        print(f"Graph context pre-load skipped: {e}")
+        print(f"Graph context/ingestion skipped: {e}")
         return {}
 
 

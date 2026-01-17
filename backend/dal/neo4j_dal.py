@@ -9,6 +9,7 @@ Golden Rule: Agents never call this directly.
 """
 
 from typing import List, Dict, Any, Optional, TypedDict
+from datetime import datetime
 from backend.graph_db.neo4j_client import Neo4jClient
 from backend.agents.schemas import (
     BiomedicalEntity,
@@ -38,15 +39,12 @@ def get_neo4j_client() -> Optional[Neo4jClient]:
 
 
 # =============================================================================
-# Domain Query Functions
+# Domain Query Functions (READ)
 # =============================================================================
 
 async def get_drug_targets(drug_name: str) -> List[BiomedicalEntity]:
     """
     Get known targets (genes/proteins) for a drug.
-    
-    Cypher: MATCH (d:Drug)-[:TARGETS]->(t) WHERE d.name = $drug
-            RETURN t
     """
     client = get_neo4j_client()
     if not client:
@@ -84,9 +82,6 @@ async def get_drug_targets(drug_name: str) -> List[BiomedicalEntity]:
 async def get_disease_genes(disease_name: str) -> List[BiomedicalEntity]:
     """
     Get genes associated with a disease.
-    
-    Cypher: MATCH (g:Gene)-[:ASSOCIATED_WITH]->(d:Disease)
-            WHERE d.name = $disease RETURN g
     """
     client = get_neo4j_client()
     if not client:
@@ -126,8 +121,6 @@ async def get_pathway_edges(
 ) -> List[BiologicalEdge]:
     """
     Get edges connecting entities via pathways.
-    
-    Returns BiologicalEdge objects for pathway simulation.
     """
     client = get_neo4j_client()
     if not client:
@@ -271,9 +264,6 @@ async def load_graph_context_for_query(
 ) -> GraphContext:
     """
     Pre-load all relevant graph data for a drug repurposing query.
-    
-    This is called by the orchestrator BEFORE agents run.
-    The data is then injected into AgentState.
     """
     context: GraphContext = {
         "drug_targets": [],
@@ -294,6 +284,149 @@ async def load_graph_context_for_query(
         context["pathway_edges"] = await get_pathway_edges(drug_name, disease_name)
     
     return context
+
+
+# =============================================================================
+# Ingestion Functions (WRITE) - Idempotent Upserts
+# =============================================================================
+
+async def upsert_drug(name: str) -> bool:
+    """Safely upsert a Drug node."""
+    client = get_neo4j_client()
+    if not client: return False
+    
+    query = """
+    MERGE (n:Drug {name: $name})
+    ON CREATE SET n.id = toLower($name), n.created_at = datetime()
+    """
+    try:
+        await client.execute_write(query, {"name": name})
+        return True
+    except Exception as e:
+        print(f"Upsert drug failed: {e}")
+        return False
+
+async def upsert_disease(name: str) -> bool:
+    """Safely upsert a Disease node."""
+    client = get_neo4j_client()
+    if not client: return False
+    
+    query = """
+    MERGE (n:Disease {name: $name})
+    ON CREATE SET n.id = toLower($name), n.created_at = datetime()
+    """
+    try:
+        await client.execute_write(query, {"name": name})
+        return True
+    except Exception as e:
+        print(f"Upsert disease failed: {e}")
+        return False
+
+async def upsert_pathway(name: str) -> bool:
+    """Safely upsert a Pathway node."""
+    client = get_neo4j_client()
+    if not client: return False
+    
+    query = """
+    MERGE (n:Pathway {name: $name})
+    ON CREATE SET n.id = toLower($name), n.created_at = datetime()
+    """
+    try:
+        await client.execute_write(query, {"name": name})
+        return True
+    except Exception as e:
+        print(f"Upsert pathway failed: {e}")
+        return False
+
+async def upsert_gene(name: str) -> bool:
+    """Safely upsert a Gene node."""
+    client = get_neo4j_client()
+    if not client: return False
+    
+    query = """
+    MERGE (n:Gene {name: $name})
+    ON CREATE SET n.id = toLower($name), n.created_at = datetime()
+    """
+    try:
+        await client.execute_write(query, {"name": name})
+        return True
+    except Exception as e:
+        print(f"Upsert gene failed: {e}")
+        return False
+
+async def upsert_relation(
+    source_name: str,
+    source_type: str,
+    relation: str,
+    target_name: str,
+    target_type: str,
+    confidence: float,
+    pmid: str,
+    extraction_method: str = "auto"
+) -> bool:
+    """
+    Safely upsert a relationship.
+    
+    Features:
+    - Creates nodes if missing
+    - Merges relationship
+    - Updates confidence if new is higher
+    - Appends uniqe PMIDs to support list
+    """
+    client = get_neo4j_client()
+    if not client: return False
+    
+    # Sanitize types for Cypher label injection (can't parameterize labels)
+    valid_labels = {"Drug", "Disease", "Gene", "Protein", "Pathway"}
+    s_label = source_type.capitalize() if source_type.capitalize() in valid_labels else "Entity"
+    t_label = target_type.capitalize() if target_type.capitalize() in valid_labels else "Entity"
+    
+    # Sanitize relation type
+    valid_relations = {
+        "TARGETS", "INHIBITS", "ACTIVATES", "BINDS", "REGULATES", 
+        "ASSOCIATED_WITH", "TREATS", "CAUSES", "PREVENTS", "PARTICIPATES_IN"
+    }
+    rel_type = relation.upper().replace(" ", "_")
+    if rel_type not in valid_relations:
+        rel_type = "ASSOCIATED_WITH"  # Fallback
+        
+    query = f"""
+    MERGE (s:{s_label} {{name: $s_name}})
+    ON CREATE SET s.id = toLower($s_name)
+    MERGE (t:{t_label} {{name: $t_name}})
+    ON CREATE SET t.id = toLower($t_name)
+    
+    MERGE (s)-[r:{rel_type}]->(t)
+    ON CREATE SET 
+        r.confidence = $confidence, 
+        r.pmids = [$pmid],
+        r.extraction_method = $method,
+        r.created_at = datetime()
+    ON MATCH SET
+        r.pmids = CASE 
+            WHEN NOT $pmid IN r.pmids THEN r.pmids + $pmid 
+            ELSE r.pmids 
+        END,
+        r.confidence = CASE 
+            WHEN $confidence > r.confidence THEN $confidence 
+            ELSE r.confidence 
+        END
+    """
+    
+    params = {
+        "s_name": source_name,
+        "t_name": target_name,
+        "confidence": confidence,
+        "pmid": pmid,
+        "method": extraction_method
+    }
+    
+    try:
+        await client.execute_write(query, params)
+        return True
+    except Exception as e:
+        print(f"Upsert relation failed: {e}")
+        return False
 
 
 # =============================================================================

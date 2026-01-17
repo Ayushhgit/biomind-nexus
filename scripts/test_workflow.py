@@ -13,12 +13,14 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 import asyncio
+import uuid
 from dotenv import load_dotenv
 
 # Load .env from backend directory
 load_dotenv(os.path.join(project_root, "backend", ".env"))
 
 from backend.agents import DrugRepurposingQuery, run_drug_repurposing_workflow
+from backend.agents.schemas import BiomedicalEntity
 
 
 async def main():
@@ -31,20 +33,29 @@ async def main():
     
     print(f"GROQ_API_KEY found: {api_key[:10]}...")
     
-    query = DrugRepurposingQuery(
-        query_id="test_real_001",
-        raw_query="can heroin be used as an anti-depressent?",
-        max_candidates=5,
-        min_confidence=0.3
-    )
+    # Test Case 1: Drug Repurposing Query (Should trigger ingestion)
+    # Using a pair likely not in seed data
+    query_text = "Can aspirin be repurposed to treat COVID-19?"
     
-    print("\n" + "="*60)
-    print("Running drug repurposing workflow with Groq + PubMed APIs")
-    print("="*60)
-    print(f"Query: {query.raw_query}")
-    print("-" * 60)
+    print(f"\n🧪 Running Workflow Test with: '{query_text}'")
     
     try:
+        # Create structured query manually to emulate extraction
+        # (This helps the Orchestrator trigger ingestion immediately)
+        query = DrugRepurposingQuery(
+            query_id=f"test-{uuid.uuid4().hex[:6]}",
+            raw_query=query_text,
+            source_drug=BiomedicalEntity(id="drug:aspirin", name="Aspirin", entity_type="drug", extraction_method="manual", extraction_confidence=1.0),
+            target_disease=BiomedicalEntity(id="disease:covid-19", name="COVID-19", entity_type="disease", extraction_method="manual", extraction_confidence=1.0),
+            max_candidates=5
+        )
+        
+        print("\n" + "="*60)
+        print("Running drug repurposing workflow with Groq + PubMed APIs")
+        print("="*60)
+        print(f"Query: {query.raw_query}")
+        print("-" * 60)
+        
         result = await run_drug_repurposing_workflow(query, "user1", "req_test")
         
         print(f"\n✓ Workflow completed!")
@@ -90,6 +101,11 @@ async def main():
         import traceback
         traceback.print_exc()
 
+
+    finally:
+        # Cleanup to avoid PyTorch segfaults
+        from backend.agents.biomedical_encoder import cleanup_resources
+        cleanup_resources()
 
 if __name__ == "__main__":
     asyncio.run(main())
