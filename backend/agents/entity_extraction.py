@@ -1,20 +1,15 @@
 """
-BioMind Nexus - Entity Extraction Agent
+Entity Extraction Agent - BioBERT-based NER
 
-Extracts biomedical entities from natural language queries using Gemini LLM.
-First step in the drug repurposing pipeline.
+Extracts biomedical entities using BioBERT for NER.
+Falls back to LLM for supplementary extraction.
 
-Responsibilities:
-- Parse user query to identify drugs, diseases, genes
-- Normalize entity names using LLM understanding
-- Return structured BiomedicalEntity objects
-
-Design: Pure function - receives query text, returns entities.
-API calls delegated to service layer.
+Models are EXTRACTORS, not decision-makers.
+BioBERT extracts structured facts; agents reason.
 """
 
-from typing import List
-import uuid
+from typing import List, Set
+import re
 
 from backend.agents.base_agent import BaseAgent
 from backend.agents.schemas import (
@@ -22,83 +17,159 @@ from backend.agents.schemas import (
     BiomedicalEntity,
     EntityType,
     DrugRepurposingQuery,
+    ExtractionMethod,
 )
-from backend.services.llm_service import extract_entities_with_llm
+
+
+# Lazy imports for heavy dependencies
+def _get_biobert_extractor():
+    """Lazy load BioBERT extractor."""
+    from backend.agents.biomedical_encoder import get_biobert_extractor
+    return get_biobert_extractor()
+
+
+def _get_llm_extractor():
+    """Lazy load LLM extractor."""
+    from backend.services.llm_service import extract_entities_with_llm
+    return extract_entities_with_llm
 
 
 class EntityExtractionAgent(BaseAgent):
     """
-    Agent for extracting biomedical entities from text using Gemini.
+    Named Entity Recognition using BioBERT + LLM fallback.
     
-    This agent is the first step in the workflow, processing
-    the raw query to identify key entities for downstream agents.
+    Extraction Strategy:
+        1. BioBERT NER for drugs, diseases, genes
+        2. LLM for supplementary entities BioBERT misses
+        3. Merge and deduplicate
     
-    Pure Input: DrugRepurposingQuery.raw_query
-    Pure Output: List[BiomedicalEntity] in state["extracted_entities"]
+    Output: List[BiomedicalEntity] with model provenance
     """
     
     name = "entity_extraction_agent"
-    description = "Extracts drugs, diseases, and genes from query text using LLM"
-    version = "2.0.0"  # Updated for LLM-based extraction
+    description = "Extracts biomedical entities using BioBERT"
+    version = "3.0.0"  # BioBERT integration
     
-    # Required inputs
     required_input_keys = ["query"]
-    
-    # Generated outputs
     output_keys = ["extracted_entities"]
+    
+    # Whether to use BioBERT (can disable if not available)
+    USE_BIOBERT = True
+    USE_LLM_FALLBACK = True
     
     async def process(self, state: AgentState) -> AgentState:
         """
-        Extract biomedical entities from the query using Gemini.
-        
-        Args:
-            state: Must contain 'query' (DrugRepurposingQuery)
-        
-        Returns:
-            State with 'extracted_entities' populated
+        Extract entities from query using BioBERT + LLM.
         """
         query: DrugRepurposingQuery = state["query"]
-        
-        # Call Gemini service for entity extraction
-        llm_result = await extract_entities_with_llm(query.raw_query)
+        text = query.raw_query
         
         entities: List[BiomedicalEntity] = []
+        seen_names: Set[str] = set()
         
-        # Process drugs
-        for drug_data in llm_result.get("drugs", []):
-            entity = self._create_entity(drug_data, EntityType.DRUG)
-            if entity and entity not in entities:
-                entities.append(entity)
+        # Stage 1: BioBERT extraction
+        if self.USE_BIOBERT:
+            biobert_entities = await self._extract_with_biobert(text)
+            for entity in biobert_entities:
+                if entity.name.lower() not in seen_names:
+                    entities.append(entity)
+                    seen_names.add(entity.name.lower())
         
-        # Process diseases
-        for disease_data in llm_result.get("diseases", []):
-            entity = self._create_entity(disease_data, EntityType.DISEASE)
-            if entity and entity not in entities:
-                entities.append(entity)
-        
-        # Process genes
-        for gene_data in llm_result.get("genes", []):
-            entity = self._create_entity(gene_data, EntityType.GENE)
-            if entity and entity not in entities:
-                entities.append(entity)
+        # Stage 2: LLM fallback for additional entities
+        if self.USE_LLM_FALLBACK:
+            llm_entities = await self._extract_with_llm(text)
+            for entity in llm_entities:
+                if entity.name.lower() not in seen_names:
+                    entities.append(entity)
+                    seen_names.add(entity.name.lower())
         
         state["extracted_entities"] = entities
-        
         return state
     
-    def _create_entity(self, data: dict, entity_type: EntityType) -> BiomedicalEntity | None:
+    async def _extract_with_biobert(self, text: str) -> List[BiomedicalEntity]:
         """
-        Create a BiomedicalEntity from LLM extraction result.
-        
-        Args:
-            data: Dict with 'name' and optional 'id'
-            entity_type: Type of entity
-        
-        Returns:
-            BiomedicalEntity or None if invalid
+        Extract entities using BioBERT NER.
         """
+        entities = []
+        
+        try:
+            extractor = _get_biobert_extractor()
+            raw_entities = extractor.extract_entities(text)
+            
+            for raw in raw_entities:
+                entity_type = self._map_type(raw.get("entity_type", ""))
+                if entity_type is None:
+                    continue
+                
+                name = raw.get("text", "").strip()
+                if not name or len(name) < 2:
+                    continue
+                
+                # Determine extraction method from model_used
+                model_used = raw.get("model_used", "BioBERT")
+                if model_used == "pattern":
+                    extraction_method = ExtractionMethod.PATTERN
+                else:
+                    extraction_method = ExtractionMethod.BIOBERT
+                
+                entity = BiomedicalEntity(
+                    id=f"{entity_type.value}:{name.lower().replace(' ', '_')}",
+                    name=self._normalize_name(name, entity_type),
+                    entity_type=entity_type,
+                    aliases=[name.lower()],
+                    extraction_method=extraction_method,
+                    extraction_confidence=raw.get("confidence", 0.5),
+                    metadata={
+                        "char_start": raw.get("start", 0),
+                        "char_end": raw.get("end", 0),
+                    }
+                )
+                entities.append(entity)
+        except Exception as e:
+            # Fallback silently on BioBERT failure
+            pass
+        
+        return entities
+    
+    async def _extract_with_llm(self, text: str) -> List[BiomedicalEntity]:
+        """
+        Extract entities using LLM (fallback/supplement).
+        """
+        entities = []
+        
+        try:
+            extract_fn = _get_llm_extractor()
+            llm_result = await extract_fn(text)
+            
+            # Process drugs
+            for item in llm_result.get("drugs", []):
+                entity = self._create_entity_from_llm(item, EntityType.DRUG)
+                if entity:
+                    entities.append(entity)
+            
+            # Process diseases
+            for item in llm_result.get("diseases", []):
+                entity = self._create_entity_from_llm(item, EntityType.DISEASE)
+                if entity:
+                    entities.append(entity)
+            
+            # Process genes
+            for item in llm_result.get("genes", []):
+                entity = self._create_entity_from_llm(item, EntityType.GENE)
+                if entity:
+                    entities.append(entity)
+        except Exception:
+            pass
+        
+        return entities
+    
+    def _create_entity_from_llm(
+        self,
+        data,
+        entity_type: EntityType
+    ) -> BiomedicalEntity | None:
+        """Create entity from LLM output."""
         if isinstance(data, str):
-            # Handle case where LLM returns just a string
             name = data.strip()
             entity_id = ""
         elif isinstance(data, dict):
@@ -107,22 +178,44 @@ class EntityExtractionAgent(BaseAgent):
         else:
             return None
         
-        if not name:
+        if not name or len(name) < 2:
             return None
         
-        # Generate ID if not provided
         if not entity_id:
             entity_id = f"{entity_type.value}:{name.lower().replace(' ', '_')}"
         
-        # Normalize name
-        normalized_name = name.title()
-        if entity_type == EntityType.GENE:
-            normalized_name = name.upper()
-        
         return BiomedicalEntity(
             id=entity_id,
-            name=normalized_name,
+            name=self._normalize_name(name, entity_type),
             entity_type=entity_type,
             aliases=[name.lower()],
-            metadata={"extraction_method": "gemini_llm"}
+            extraction_method=ExtractionMethod.LLM,
+            extraction_confidence=0.7,  # Default LLM confidence
+            metadata={"source": "llm_extraction"}
         )
+    
+    def _map_type(self, type_str: str) -> EntityType | None:
+        """Map extracted type string to EntityType enum."""
+        type_lower = type_str.lower()
+        
+        if type_lower in ("drug", "chemical", "compound"):
+            return EntityType.DRUG
+        elif type_lower in ("disease", "condition", "disorder"):
+            return EntityType.DISEASE
+        elif type_lower in ("gene", "protein"):
+            return EntityType.GENE
+        elif type_lower == "pathway":
+            return EntityType.PATHWAY
+        
+        return None
+    
+    def _normalize_name(self, name: str, entity_type: EntityType) -> str:
+        """Normalize entity name based on type."""
+        name = name.strip()
+        
+        if entity_type == EntityType.GENE:
+            # Genes are typically uppercase
+            return name.upper()
+        else:
+            # Title case for drugs, diseases
+            return name.title()
