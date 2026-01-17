@@ -242,7 +242,7 @@ def _transform_state_to_response(query_id: str, state: dict) -> QueryResponse:
             description=evidence.description[:200] if evidence.description else "",
             evidence_type=evidence.evidence_type.value if hasattr(evidence.evidence_type, 'value') else str(evidence.evidence_type),
             confidence=evidence.confidence,
-            source=evidence.source.source_id if evidence.source else None
+            source=evidence.citation.source_id if evidence.citation else None
         ))
     
     # Extract candidates

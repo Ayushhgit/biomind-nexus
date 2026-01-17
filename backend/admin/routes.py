@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from backend.auth.models import User, Role, Session
-from backend.auth.router import get_current_user
+from backend.auth.dependencies import get_current_user
 from backend.auth.database import get_session
 
 
@@ -352,9 +352,9 @@ async def list_active_sessions(
         return SessionListResponse(sessions=sessions_list, total=len(sessions_list))
 
 
-@router.delete("/sessions/{session_id}", summary="Revoke Single Session")
+@router.delete("/sessions/{target_session_id}", summary="Revoke Single Session")
 async def revoke_session(
-    session_id: str,
+    target_session_id: str,
     admin: User = Depends(require_admin),
     db=Depends(get_session)
 ):
@@ -365,7 +365,7 @@ async def revoke_session(
     """
     async with db as session:
         result = await session.execute(
-            select(Session).where(Session.session_id == UUID(session_id))
+            select(Session).where(Session.session_id == UUID(target_session_id))
         )
         sess = result.scalar_one_or_none()
         
@@ -376,4 +376,4 @@ async def revoke_session(
         session.add(sess)
         await session.commit()
         
-        return {"message": "Session revoked", "session_id": session_id}
+        return {"message": "Session revoked", "session_id": target_session_id}
