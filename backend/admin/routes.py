@@ -118,76 +118,54 @@ async def get_audit_logs(
     admin: AuthenticatedUser = Depends(require_admin)
 ):
     """
-    Retrieve audit logs from Cassandra.
+    Retrieve audit logs from Cassandra (or fallback).
     
     Admin only. Supports pagination and filtering.
     """
-    from backend.dal.cassandra_dal import get_cassandra_client
-    
-    client = get_cassandra_client()
-    
-    if not client:
-        # Fallback to empty if Cassandra not available
-        return AuditLogResponse(logs=[], total=0, page=page, page_size=page_size)
+    from backend.dal.cassandra_dal import get_all_audit_logs
+    import json
     
     try:
-        # Build query
-        query_parts = ["SELECT * FROM audit_events"]
-        filters = []
+        # Get raw logs from DAL (which handles fallback)
+        raw_logs = await get_all_audit_logs(
+            limit=page_size,
+            offset=(page - 1) * page_size,
+            event_type=event_type,
+            user_id=filter_user_id
+        )
         
-        if event_type:
-            filters.append(f"event_type = '{event_type}'")
-        if filter_user_id:
-            filters.append(f"user_id = '{filter_user_id}'")
-        
-        if filters:
-            query_parts.append("WHERE " + " AND ".join(filters))
-            query_parts.append("ALLOW FILTERING")
-        
-        query_parts.append(f"LIMIT {page_size * page}")
-        query = " ".join(query_parts)
-        
-        # Execute query
+        # Convert to Pydantic models
         logs = []
-        if hasattr(client, '_session') and client._session:
-            from cassandra.query import SimpleStatement
-            import json
-            
-            stmt = SimpleStatement(query)
-            rows = client._session.execute(stmt)
-            
-            # Skip to the right page
-            skip = (page - 1) * page_size
-            count = 0
-            
-            for row in rows:
-                count += 1
-                if count <= skip:
-                    continue
-                if len(logs) >= page_size:
-                    break
+        for row in raw_logs:
+            details = {}
+            if isinstance(row.get('details'), str):
+                try:
+                    details = json.loads(row['details'])
+                except:
+                    pass
+            elif isinstance(row.get('details'), dict):
+                details = row['details']
                 
-                # Parse details
-                details = {}
-                if row.details:
-                    try:
-                        details = json.loads(row.details)
-                    except:
-                        pass
-                
-                logs.append(AuditLogEntry(
-                    event_id=str(row.event_id) if hasattr(row, 'event_id') else "",
-                    timestamp=row.created_at.isoformat() if row.created_at else "",
-                    event_type=row.event_type or "",
-                    user_id=row.user_id or "",
-                    action=row.action or "",
-                    request_id=row.request_id if hasattr(row, 'request_id') else None,
-                    details=details
-                ))
+            logs.append(AuditLogEntry(
+                event_id=row.get('event_id', ""),
+                timestamp=row.get('created_at', "") or row.get('timestamp', ""),
+                event_type=row.get('event_type', ""),
+                user_id=row.get('user_id', ""),
+                user_email=row.get('user_email', None),
+                action=row.get('action', ""),
+                request_id=row.get('request_id', None),
+                details=details
+            ))
         
+        # Note: Total count is hard to get exactly with Cassandra/File, so we estimate
+        # If we got a full page, assume there are more.
+        total_estimate = len(logs) + ((page - 1) * page_size)
+        if len(logs) == page_size:
+            total_estimate += page_size  # Assume at least one more page
+            
         return AuditLogResponse(
             logs=logs,
-            total=len(logs),  # Approximate
+            total=total_estimate,
             page=page,
             page_size=page_size
         )

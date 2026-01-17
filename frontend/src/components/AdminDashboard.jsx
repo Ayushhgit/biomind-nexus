@@ -301,12 +301,108 @@ const EmptyState = styled.div`
 // Component
 // ============================================
 
+// ... existing imports
+import styled, { keyframes, css } from 'styled-components';
+// ... api imports
+
+/**
+ * BioMind Nexus Admin Dashboard
+ */
+
+// ... animations ...
+
+// ============================================
+// Styles
+// ============================================
+
+// ... (keep existing styles)
+
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: ${fadeIn} 0.2s ease-out;
+`;
+
+const ModalContent = styled.div`
+  background: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 85vh;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+`;
+
+const ModalHeader = styled.div`
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+
+  h3 { margin: 0; font-size: 1.1rem; color: #0f172a; }
+`;
+
+const ModalBody = styled.div`
+  padding: 1.5rem;
+  overflow-y: auto;
+`;
+
+const ModalFooter = styled.div`
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  background: #f8fafc;
+`;
+
+const JsonPre = styled.pre`
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  font-family: 'Fira Code', monospace;
+  margin: 0;
+`;
+
+const DetailRow = styled.div`
+  margin-bottom: 1rem;
+  label { display: block; font-size: 0.75rem; color: #64748b; font-weight: 600; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  div { font-size: 0.95rem; color: #334155; }
+`;
+
+const CloseBtn = styled.button`
+    background: none; border: none; cursor: pointer; color: #64748b;
+    &:hover { color: #0f172a; }
+`;
+
+// ============================================
+// Component
+// ============================================
+
 export default function AdminDashboard({ user, onLogout }) {
     const [activeView, setActiveView] = useState('audit');
     const [auditLogs, setAuditLogs] = useState([]);
     const [users, setUsers] = useState([]);
     const [sessions, setSessions] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [selectedLog, setSelectedLog] = useState(null);
 
     // Load data based on active view
     useEffect(() => {
@@ -347,6 +443,7 @@ export default function AdminDashboard({ user, onLogout }) {
     };
 
     const handleToggleUserStatus = async (userId, currentStatus) => {
+        if (!window.confirm(`Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} this user?`)) return;
         try {
             await updateUser(userId, { is_active: !currentStatus });
             loadData();
@@ -356,6 +453,7 @@ export default function AdminDashboard({ user, onLogout }) {
     };
 
     const handleRevokeUserSessions = async (userId) => {
+        if (!window.confirm("This will force the user to log out immediately. Continue?")) return;
         try {
             await revokeUserSessions(userId);
             loadData();
@@ -365,6 +463,7 @@ export default function AdminDashboard({ user, onLogout }) {
     };
 
     const handleRevokeSession = async (sessionId) => {
+        if (!window.confirm("Kill this session?")) return;
         try {
             await revokeSession(sessionId);
             loadData();
@@ -378,7 +477,12 @@ export default function AdminDashboard({ user, onLogout }) {
     const formatDate = (dateStr) => {
         if (!dateStr) return '-';
         const date = new Date(dateStr);
-        return date.toLocaleString();
+        // Explicitly include time zone name if possible, or usually browser default is local
+        return date.toLocaleString('en-IN', {
+            dateStyle: 'medium',
+            timeStyle: 'long',
+            hour12: true
+        });
     };
 
     return (
@@ -476,10 +580,10 @@ export default function AdminDashboard({ user, onLogout }) {
                                             <tr key={log.event_id || i}>
                                                 <Td>{formatDate(log.timestamp)}</Td>
                                                 <Td><Badge>{log.event_type}</Badge></Td>
-                                                <Td>{log.user_id}</Td>
+                                                <Td title={log.user_id}>{log.user_email || log.user_id.substring(0, 8) + '...'}</Td>
                                                 <Td>{log.action}</Td>
-                                                <Td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {JSON.stringify(log.details).substring(0, 50)}...
+                                                <Td>
+                                                    <ActionBtn onClick={() => setSelectedLog(log)}>View Details</ActionBtn>
                                                 </Td>
                                             </tr>
                                         ))}
@@ -627,6 +731,48 @@ export default function AdminDashboard({ user, onLogout }) {
                     </>
                 )}
             </MainContent>
+
+            {selectedLog && (
+                <ModalOverlay onClick={() => setSelectedLog(null)}>
+                    <ModalContent onClick={e => e.stopPropagation()}>
+                        <ModalHeader>
+                            <h3>Audit Log Details</h3>
+                            <CloseBtn onClick={() => setSelectedLog(null)}>
+                                <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </CloseBtn>
+                        </ModalHeader>
+                        <ModalBody>
+                            <DetailRow>
+                                <label>Event ID</label>
+                                <div>{selectedLog.event_id}</div>
+                            </DetailRow>
+                            <DetailRow>
+                                <label>Timestamp</label>
+                                <div>{formatDate(selectedLog.timestamp)}</div>
+                            </DetailRow>
+                            <DetailRow>
+                                <label>User</label>
+                                <div>{selectedLog.user_email || selectedLog.user_id}</div>
+                            </DetailRow>
+                            <DetailRow>
+                                <label>Action</label>
+                                <div>{selectedLog.action}</div>
+                            </DetailRow>
+                            <DetailRow>
+                                <label>Details</label>
+                                <JsonPre>
+                                    {JSON.stringify(selectedLog.details, null, 2)}
+                                </JsonPre>
+                            </DetailRow>
+                        </ModalBody>
+                        <ModalFooter>
+                            <ActionBtn onClick={() => setSelectedLog(null)}>Close</ActionBtn>
+                        </ModalFooter>
+                    </ModalContent>
+                </ModalOverlay>
+            )}
         </DashboardContainer>
     );
 }
