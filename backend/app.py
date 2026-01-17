@@ -177,3 +177,8 @@ app.include_router(agents_router, prefix="/api/v1/agents", tags=["agents"])
 # Register admin routes
 from backend.admin.routes import router as admin_router
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
+
+# Register report routes (audit, graph, citations, PDF)
+from backend.report_routes import router as report_router
+app.include_router(report_router, prefix="/api/v1", tags=["reports"])
+

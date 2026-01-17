@@ -162,6 +162,13 @@ async def submit_query(request: QueryRequest):
             request_id=query_id
         )
         
+        # Cache results for report endpoints (audit, graph, citations, PDF)
+        try:
+            from backend.report_routes import cache_query_result
+            cache_query_result(query_id, final_state)
+        except ImportError:
+            pass  # Report routes not available
+        
         # Transform results to API response
         response = _transform_state_to_response(query_id, final_state)
         return response
