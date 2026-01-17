@@ -214,6 +214,8 @@ async def _preload_graph_context(query: DrugRepurposingQuery) -> dict:
     2. Check if knowledge exists (via IngestionPipeline)
     3. If missing, Pipeline fetches papers & persists facts
     4. Return loaded graph context
+    
+    IMPORTANT: Returns empty dict on failure - workflow continues without pre-loading.
     """
     try:
         # Lazy import ingestion to avoid circular deps/startup overhead
@@ -225,24 +227,85 @@ async def _preload_graph_context(query: DrugRepurposingQuery) -> dict:
         
         # If no pre-extracted entities, try parsing from raw query
         if not drug_name or not disease_name:
-            # Simple heuristic extraction for ingestion trigger
-            # (Real extraction happens in agents, this is just for pre-loading)
             import re
             text = query.raw_query.lower()
             
-            # Very basic patterns just to trigger ingestion if obvious
-            # In production, use a lightweight NER here
-            # For now, rely on parsed query or skip ingestion if ambiguous
-            pass
+            # Extended drug list (common repurposing candidates)
+            KNOWN_DRUGS = [
+                "metformin", "aspirin", "ibuprofen", "cisplatin", "tamoxifen",
+                "rapamycin", "doxorubicin", "paclitaxel", "hydroxychloroquine",
+                "ivermectin", "remdesivir", "baricitinib", "tocilizumab",
+                "statins", "atorvastatin", "simvastatin", "rosuvastatin",
+                "thalidomide", "lenalidomide", "propranolol", "celecoxib",
+                "sildenafil", "minoxidil", "finasteride", "lithium",
+                "valproic acid", "carbamazepine", "gabapentin", "pregabalin",
+                "fluoxetine", "sertraline", "duloxetine", "venlafaxine",
+                "omeprazole", "pantoprazole", "methotrexate", "azathioprine",
+                "cyclophosphamide", "rituximab", "nivolumab", "pembrolizumab",
+                "trastuzumab", "bevacizumab", "erlotinib", "gefitinib",
+                "sorafenib", "sunitinib", "imatinib", "dasatinib", "nilotinib"
+            ]
+            
+            # Try known drugs first
+            for drug in KNOWN_DRUGS:
+                if drug in text and not drug_name:
+                    drug_name = drug.title()
+                    break
+            
+            # Generic drug patterns (ends in common suffixes)
+            if not drug_name:
+                drug_pattern = re.search(r'\b([a-z]{4,}(?:mab|nib|zole|statin|pril|sartan|olol|pine|ine|ide|ate|one))\b', text, re.IGNORECASE)
+                if drug_pattern:
+                    drug_name = drug_pattern.group(1).title()
+            
+            # Try "can X be repurposed" pattern
+            if not drug_name:
+                pattern = re.search(r'can\s+([a-z][a-z]+)\s+be\s+(?:repurposed|used)', text)
+                if pattern:
+                    candidate = pattern.group(1).title()
+                    # Filter out stopwords
+                    if candidate.lower() not in ["the", "a", "an", "this", "that"]:
+                        drug_name = candidate
+            
+            # Extended disease list
+            KNOWN_DISEASES = [
+                "cancer", "diabetes", "alzheimer", "parkinson", "covid",
+                "coronavirus", "breast cancer", "lung cancer", "leukemia",
+                "arthritis", "hypertension", "depression", "asthma",
+                "heart disease", "cardiovascular", "stroke", "obesity",
+                "inflammatory", "autoimmune", "multiple sclerosis", "lupus",
+                "rheumatoid", "psoriasis", "crohn", "colitis",
+                "hepatitis", "cirrhosis", "fibrosis", "copd",
+                "pneumonia", "influenza", "tuberculosis", "malaria",
+                "hiv", "aids", "sepsis", "infection",
+                "melanoma", "lymphoma", "glioblastoma", "carcinoma",
+                "tumor", "metastatic", "neoplasm", "sarcoma"
+            ]
+            
+            # Try known diseases first
+            for disease in KNOWN_DISEASES:
+                if disease in text and not disease_name:
+                    disease_name = disease.title()
+                    break
+            
+            # Try "for X treatment/therapy" pattern  
+            if not disease_name:
+                pattern = re.search(r'(?:for|treat|against|in)\s+([a-z]+(?:\s+[a-z]+)?)\s*(?:treatment|therapy|patients)?', text)
+                if pattern:
+                    candidate = pattern.group(1).title()
+                    # Filter out stopwords
+                    if candidate.lower() not in ["the", "a", "an", "this", "that", "its"]:
+                        disease_name = candidate
 
         if drug_name and disease_name:
             print(f"Orchestrator: Check ingestion for {drug_name} <-> {disease_name}")
             pipeline = get_ingestion_pipeline()
-            # This handles Check -> Fetch? -> Persist? -> Load
             context = await pipeline.ingest_if_missing(drug_name, disease_name)
             return context
             
-        print("Orchestrator: Insufficient entities for specific graph loading.")
+        # Log but don't fail - agents can still work via LLM reasoning
+        print(f"Orchestrator: Insufficient entities for specific graph loading (drug={drug_name}, disease={disease_name}).")
+        print("Orchestrator: Continuing with LLM-based reasoning only.")
         return {}
         
     except Exception as e:

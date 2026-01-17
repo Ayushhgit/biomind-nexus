@@ -105,3 +105,76 @@ export async function getGraphNodes(entityType = null) {
 
     return response.json();
 }
+
+/**
+ * Get audit trail for a query
+ * @param {string} queryId - Query identifier
+ * @returns {Promise<AuditTrailResponse>}
+ */
+export async function getAuditTrail(queryId) {
+    const response = await fetch(`${API_BASE_URL}/reports/${queryId}/audit`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to get audit trail');
+    }
+
+    return response.json();
+}
+
+/**
+ * Get reasoning graph for visualization
+ * @param {string} queryId - Query identifier
+ * @returns {Promise<ReasoningGraphResponse>}
+ */
+export async function getReasoningGraph(queryId) {
+    const response = await fetch(`${API_BASE_URL}/reports/${queryId}/graph`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to get reasoning graph');
+    }
+
+    return response.json();
+}
+
+/**
+ * Get citations for a query
+ * @param {string} queryId - Query identifier
+ * @returns {Promise<CitationsResponse>}
+ */
+export async function getCitations(queryId) {
+    const response = await fetch(`${API_BASE_URL}/reports/${queryId}/citations`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to get citations');
+    }
+
+    return response.json();
+}
+
+/**
+ * Download PDF report for a query
+ * @param {string} queryId - Query identifier
+ * @returns {Promise<Blob>} PDF file as blob
+ */
+export async function downloadPdfReport(queryId) {
+    const response = await fetch(`${API_BASE_URL}/reports/${queryId}/pdf`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to download PDF');
+    }
+
+    return response.blob();
+}
+

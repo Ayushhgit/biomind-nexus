@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { logout, clearAuth } from '../api/auth';
-import { submitQuery, getExampleQueries } from '../api/agents';
+import { submitQuery, getExampleQueries, downloadPdfReport } from '../api/agents';
+import ResultsView from './ResultsView';
 
 /**
  * BioMind Nexus Dashboard
@@ -532,6 +533,7 @@ export default function Dashboard({ user, onLogout }) {
   const [results, setResults] = useState(null);
   const [examples, setExamples] = useState([]);
   const [activeView, setActiveView] = useState('query');
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   // Load example queries on mount
   useEffect(() => {
@@ -584,6 +586,26 @@ export default function Dashboard({ user, onLogout }) {
     if (score >= 0.7) return 'high';
     if (score >= 0.4) return 'medium';
     return 'low';
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!results?.query_id) return;
+    setIsDownloadingPdf(true);
+    try {
+      const blob = await downloadPdfReport(results.query_id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `biomind_report_${results.query_id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      console.error('PDF download failed:', err);
+    } finally {
+      setIsDownloadingPdf(false);
+    }
   };
 
   return (
@@ -643,95 +665,144 @@ export default function Dashboard({ user, onLogout }) {
 
       {/* Main Content */}
       <MainContent>
-        <PageHeader>
-          <h1>Drug Repurposing Analysis</h1>
-          <p>Ask questions about potential drug repurposing opportunities</p>
-        </PageHeader>
+        {/* Query Analysis View */}
+        {activeView === 'query' && (
+          <>
+            <PageHeader>
+              <h1>Drug Repurposing Analysis</h1>
+              <p>Ask questions about potential drug repurposing opportunities</p>
+            </PageHeader>
 
-        {/* Query Input Card */}
-        <QueryCard>
-          <QueryInput
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Enter your drug repurposing question... e.g., 'Can metformin be repurposed for breast cancer treatment?'"
-            disabled={isLoading}
-          />
-          <QueryActions>
-            <ExampleQueries>
-              {examples.slice(0, 3).map((ex, i) => (
-                <ExampleChip key={i} onClick={() => setQuery(ex.query)}>
-                  {ex.query.length > 50 ? ex.query.substring(0, 50) + '...' : ex.query}
-                </ExampleChip>
-              ))}
-            </ExampleQueries>
-            <SubmitButton onClick={handleSubmitQuery} disabled={isLoading || !query.trim()}>
-              {isLoading ? (
-                <Spinner />
-              ) : (
-                <>
-                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Analyze
-                </>
-              )}
-            </SubmitButton>
-          </QueryActions>
-        </QueryCard>
+            {/* Query Input Card */}
+            <QueryCard>
+              <QueryInput
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Enter your drug repurposing question... e.g., 'Can metformin be repurposed for breast cancer treatment?'"
+                disabled={isLoading}
+              />
+              <QueryActions>
+                <ExampleQueries>
+                  {examples.slice(0, 3).map((ex, i) => (
+                    <ExampleChip key={i} onClick={() => setQuery(ex.query)}>
+                      {ex.query.length > 50 ? ex.query.substring(0, 50) + '...' : ex.query}
+                    </ExampleChip>
+                  ))}
+                </ExampleQueries>
+                <SubmitButton onClick={handleSubmitQuery} disabled={isLoading || !query.trim()}>
+                  {isLoading ? (
+                    <Spinner />
+                  ) : (
+                    <>
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Analyze
+                    </>
+                  )}
+                </SubmitButton>
+              </QueryActions>
+            </QueryCard>
 
-        {/* Loading State */}
-        {isLoading && (
-          <LoadingOverlay>
-            <div className="loader" />
-            <h3>Analyzing your query...</h3>
-            <p>Running entity extraction, literature search, and reasoning agents</p>
-          </LoadingOverlay>
+            {/* Loading State */}
+            {isLoading && (
+              <LoadingOverlay>
+                <div className="loader" />
+                <h3>Analyzing your query...</h3>
+                <p>Running entity extraction, literature search, and reasoning agents</p>
+              </LoadingOverlay>
+            )}
+
+            {/* Results - Three Panel View */}
+            {!isLoading && results && (
+              <ResultsView
+                queryId={results.query_id}
+                results={results}
+                onDownloadPdf={handleDownloadPdf}
+                isDownloading={isDownloadingPdf}
+              />
+            )}
+
+            {/* Empty State */}
+            {!isLoading && !results && (
+              <EmptyState>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                <h3>Ready to explore drug repurposing</h3>
+                <p>Enter a query above to discover potential therapeutic opportunities</p>
+              </EmptyState>
+            )}
+          </>
         )}
 
-        {/* Results */}
-        {!isLoading && results && (
-          <ResultsSection>
-            <SectionTitle>
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        {/* Knowledge Graph View */}
+        {activeView === 'graph' && (
+          <>
+            <PageHeader>
+              <h1>Knowledge Graph Explorer</h1>
+              <p>Explore the biomedical knowledge graph of drugs, diseases, and pathways</p>
+            </PageHeader>
+            <EmptyState>
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              {results.candidates?.length || 0} Drug Candidates Found
-            </SectionTitle>
-
-            <ResultsGrid>
-              {results.candidates?.map((candidate, index) => (
-                <CandidateCard key={candidate.candidate_id || index}>
-                  <CandidateHeader>
-                    <div>
-                      <DrugName>{candidate.drug_name}</DrugName>
-                      <DiseaseBadge>{candidate.target_disease}</DiseaseBadge>
-                    </div>
-                    <ConfidenceScore {...{ [getConfidenceLevel(candidate.confidence)]: true }}>
-                      <span className="score">{Math.round(candidate.confidence * 100)}%</span>
-                    </ConfidenceScore>
-                  </CandidateHeader>
-                  <Hypothesis>{candidate.hypothesis}</Hypothesis>
-                  <EvidenceCount>
-                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    {candidate.evidence_count} supporting evidence items
-                  </EvidenceCount>
-                </CandidateCard>
-              ))}
-            </ResultsGrid>
-          </ResultsSection>
+              <h3>Knowledge Graph</h3>
+              <p>Run a query to see the relevant subgraph visualization</p>
+              <SubmitButton onClick={() => setActiveView('query')} style={{ marginTop: '1rem' }}>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Start Analysis
+              </SubmitButton>
+            </EmptyState>
+          </>
         )}
 
-        {/* Empty State */}
-        {!isLoading && !results && (
-          <EmptyState>
-            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            <h3>Ready to explore drug repurposing</h3>
-            <p>Enter a query above to discover potential therapeutic opportunities</p>
-          </EmptyState>
+        {/* Query History View */}
+        {activeView === 'history' && (
+          <>
+            <PageHeader>
+              <h1>Query History</h1>
+              <p>View your past drug repurposing analyses</p>
+            </PageHeader>
+            <EmptyState>
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3>No History Yet</h3>
+              <p>Your completed queries will appear here for quick reference</p>
+              <SubmitButton onClick={() => setActiveView('query')} style={{ marginTop: '1rem' }}>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                New Query
+              </SubmitButton>
+            </EmptyState>
+          </>
+        )}
+
+        {/* Reports/Dossiers View */}
+        {activeView === 'reports' && (
+          <>
+            <PageHeader>
+              <h1>Research Dossiers</h1>
+              <p>Download and manage your generated PDF reports</p>
+            </PageHeader>
+            <EmptyState>
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <h3>No Reports Yet</h3>
+              <p>Generate a report by running a query and clicking "Download PDF"</p>
+              <SubmitButton onClick={() => setActiveView('query')} style={{ marginTop: '1rem' }}>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Create Report
+              </SubmitButton>
+            </EmptyState>
+          </>
         )}
       </MainContent>
     </DashboardContainer>

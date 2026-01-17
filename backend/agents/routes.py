@@ -162,6 +162,13 @@ async def submit_query(request: QueryRequest):
             request_id=query_id
         )
         
+        # Cache results for report endpoints (audit, graph, citations, PDF)
+        try:
+            from backend.report_routes import cache_query_result
+            cache_query_result(query_id, final_state)
+        except ImportError:
+            pass  # Report routes not available
+        
         # Transform results to API response
         response = _transform_state_to_response(query_id, final_state)
         return response
@@ -242,7 +249,7 @@ def _transform_state_to_response(query_id: str, state: dict) -> QueryResponse:
             description=evidence.description[:200] if evidence.description else "",
             evidence_type=evidence.evidence_type.value if hasattr(evidence.evidence_type, 'value') else str(evidence.evidence_type),
             confidence=evidence.confidence,
-            source=evidence.source.source_id if evidence.source else None
+            source=evidence.citation.source_id if evidence.citation else None
         ))
     
     # Extract candidates
