@@ -256,7 +256,10 @@ async def _preload_graph_context(query: DrugRepurposingQuery) -> dict:
             if not drug_name:
                 drug_pattern = re.search(r'\b([a-z]{4,}(?:mab|nib|zole|statin|pril|sartan|olol|pine|ine|ide|ate|one))\b', text, re.IGNORECASE)
                 if drug_pattern:
-                    drug_name = drug_pattern.group(1).title()
+                    candidate = drug_pattern.group(1).title()
+                    # Filter out disease names that match these patterns
+                    if candidate.lower() not in ["vaccine", "cocaine", "morphine", "heroine", "nicotine", "caffeine", "dopamine", "serotonine"]:
+                        drug_name = candidate
             
             # Try "can X be repurposed" pattern
             if not drug_name:
@@ -264,8 +267,29 @@ async def _preload_graph_context(query: DrugRepurposingQuery) -> dict:
                 if pattern:
                     candidate = pattern.group(1).title()
                     # Filter out stopwords
-                    if candidate.lower() not in ["the", "a", "an", "this", "that"]:
+                    if candidate.lower() not in ["the", "a", "an", "this", "that", "it", "they", "we"]:
                         drug_name = candidate
+            
+            # Try "repurpose X for" or "using X for" pattern
+            if not drug_name:
+                pattern = re.search(r'(?:repurpose|repurposing|using|use)\s+([a-z]{3,})\s+(?:for|to|in)', text)
+                if pattern:
+                    candidate = pattern.group(1).title()
+                    if candidate.lower() not in ["the", "a", "an", "this", "that", "drugs", "drug", "medicine", "medication"]:
+                        drug_name = candidate
+            
+            # Try "X for treating" or "X to treat" pattern
+            if not drug_name:
+                pattern = re.search(r'\b([a-z]{4,})\s+(?:for\s+treating|to\s+treat|against|for)', text)
+                if pattern:
+                    candidate = pattern.group(1).title()
+                    if candidate.lower() not in ["the", "a", "an", "this", "that", "drugs", "use", "used", "what", "which", "how"]:
+                        drug_name = candidate
+            
+            # For queries like "what drugs treat alzheimer" - no specific drug, use disease-focused mode
+            # Don't fail, but log this for debugging
+            if not drug_name:
+                print(f"Orchestrator: No specific drug found in query. Query text: {text[:50]}...")
             
             # Extended disease list (including psychiatric conditions)
             KNOWN_DISEASES = [
