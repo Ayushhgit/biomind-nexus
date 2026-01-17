@@ -1,11 +1,8 @@
 """
-Entity Extraction Agent - BioBERT-based NER
+Entity Extraction Agent.
 
-Extracts biomedical entities using BioBERT for NER.
-Falls back to LLM for supplementary extraction.
-
-Models are EXTRACTORS, not decision-makers.
-BioBERT extracts structured facts; agents reason.
+This agent finds drugs, diseases, and genes in the user's text.
+It tries BioBERT first, then falls back to the LLM if needed.
 """
 
 from typing import List, Set
@@ -36,14 +33,12 @@ def _get_llm_extractor():
 
 class EntityExtractionAgent(BaseAgent):
     """
-    Named Entity Recognition using BioBERT + LLM fallback.
+    Finds entities in the text.
     
-    Extraction Strategy:
-        1. BioBERT NER for drugs, diseases, genes
-        2. LLM for supplementary entities BioBERT misses
-        3. Merge and deduplicate
-    
-    Output: List[BiomedicalEntity] with model provenance
+    Plan:
+    1. Use BioBERT (it's fast)
+    2. Use LLM for anything BioBERT missed
+    3. Put them all in a list without duplicates
     """
     
     name = "entity_extraction_agent"
@@ -59,7 +54,7 @@ class EntityExtractionAgent(BaseAgent):
     
     async def process(self, state: AgentState) -> AgentState:
         """
-        Extract entities from query using BioBERT + LLM.
+        Main function to extract entities.
         """
         query: DrugRepurposingQuery = state["query"]
         text = query.raw_query
@@ -88,7 +83,7 @@ class EntityExtractionAgent(BaseAgent):
     
     async def _extract_with_biobert(self, text: str) -> List[BiomedicalEntity]:
         """
-        Extract entities using BioBERT NER.
+        Use BioBERT model to find entities.
         """
         entities = []
         
@@ -133,7 +128,7 @@ class EntityExtractionAgent(BaseAgent):
     
     async def _extract_with_llm(self, text: str) -> List[BiomedicalEntity]:
         """
-        Extract entities using LLM (fallback/supplement).
+        Use LLM to find extra entities.
         """
         entities = []
         
@@ -168,7 +163,7 @@ class EntityExtractionAgent(BaseAgent):
         data,
         entity_type: EntityType
     ) -> BiomedicalEntity | None:
-        """Create entity from LLM output."""
+        """Make a proper entity object from the LLM data."""
         if isinstance(data, str):
             name = data.strip()
             entity_id = ""
@@ -195,7 +190,7 @@ class EntityExtractionAgent(BaseAgent):
         )
     
     def _map_type(self, type_str: str) -> EntityType | None:
-        """Map extracted type string to EntityType enum."""
+        """Turn the string type into our Enum format."""
         type_lower = type_str.lower()
         
         if type_lower in ("drug", "chemical", "compound"):
@@ -210,7 +205,7 @@ class EntityExtractionAgent(BaseAgent):
         return None
     
     def _normalize_name(self, name: str, entity_type: EntityType) -> str:
-        """Normalize entity name based on type."""
+        """Clean up the name format."""
         name = name.strip()
         
         if entity_type == EntityType.GENE:

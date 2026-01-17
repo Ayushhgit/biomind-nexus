@@ -1,11 +1,7 @@
 """
-Reasoning Agent - Hypothesis Generation
+Reasoning Agent.
 
-Consumes SimulationResult from PathwayReasoningAgent.
-Generates structured DrugCandidate outputs using LLM.
-
-Does NOT perform pathway logic itself - that is done by PathwayReasoningAgent.
-This agent synthesizes simulation results into human-readable hypotheses.
+This agent takes the simulation results and uses the LLM to write a hypothesis.
 """
 
 from typing import List, Dict, Any
@@ -31,16 +27,10 @@ from backend.services.llm_service import (
 
 class ReasoningAgent(BaseAgent):
     """
-    Hypothesis generation agent.
+    Writes the hypothesis.
     
-    Consumes:
-        - simulation_result: PathwayPath data from simulation
-        - extracted_entities: Drug/disease entities
-        - literature_evidence: Supporting citations
-    
-    Produces:
-        - drug_candidates: List of structured hypotheses
-        - mechanism_paths: List of MechanismPath objects
+    It takes the simulation paths and turns them into a DrugCandidate object.
+    It uses the LLM to write the text.
     """
     
     name = "reasoning_agent"
@@ -52,7 +42,7 @@ class ReasoningAgent(BaseAgent):
     
     async def process(self, state: AgentState) -> AgentState:
         """
-        Generate hypotheses from simulation results.
+        Make hypotheses from the simulation.
         """
         entities: List[BiomedicalEntity] = state.get("extracted_entities", [])
         evidence: List[EvidenceItem] = state.get("literature_evidence", [])
@@ -107,7 +97,7 @@ class ReasoningAgent(BaseAgent):
         path: PathwayPath,
         entities: List[BiomedicalEntity]
     ) -> MechanismPath:
-        """Convert PathwayPath to MechanismPath schema."""
+        """Change the path object to our mechanism schema."""
         # Build entity nodes
         nodes = []
         entity_lookup = {e.name.lower(): e for e in entities}
@@ -157,7 +147,7 @@ class ReasoningAgent(BaseAgent):
         evidence: List[EvidenceItem],
         citations: List[Citation]
     ) -> DrugCandidate:
-        """Generate DrugCandidate from simulation results."""
+        """Make a candidate from the simulation results."""
         
         # Collect evidence summaries
         evidence_summaries = [e.description[:200] for e in evidence[:5]]
@@ -199,7 +189,7 @@ class ReasoningAgent(BaseAgent):
         evidence: List[EvidenceItem],
         citations: List[Citation]
     ) -> DrugCandidate:
-        """Generate candidate when no simulation paths available."""
+        """Make a candidate even if we didn't simulate anything."""
         
         evidence_summaries = [e.description[:200] for e in evidence[:5]]
         

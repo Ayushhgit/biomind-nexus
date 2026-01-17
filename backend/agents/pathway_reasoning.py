@@ -1,19 +1,8 @@
 """
-Pathway Reasoning Agent - Deterministic Biological Pathway Simulation
+Pathway Reasoning Agent.
 
-Performs in-silico counterfactual reasoning over biological pathways.
-NOT molecular simulation. NOT ML. Deterministic graph traversal.
-
-Core Question:
-"If drug D modulates target T, and T affects pathway P, 
-and P is implicated in disease X, how plausible is repurposing D for X?"
-
-Simulation Method:
-1. Build in-memory biological graph from extracted entities + evidence
-2. Traverse drug → target → pathway → disease paths (BFS)
-3. Score each path via confidence propagation
-4. Reject paths lacking evidence or biological plausibility
-5. Return SimulationResult with valid/rejected paths
+This agent builds a graph of biological things and tries to find a path from the drug to the disease.
+It's just a simulation using BFS, not a real biology experiment.
 """
 
 from typing import List, Dict, Set, Tuple, Optional
@@ -141,20 +130,10 @@ class BiologicalGraph:
 
 class PathwayReasoningAgent(BaseAgent):
     """
-    Agent for deterministic biological pathway simulation.
+    This agent simulates the pathway.
     
-    Performs counterfactual reasoning:
-    "Given evidence, how plausible is drug D for disease X?"
-    
-    This is NOT molecular simulation.
-    This is graph traversal with confidence propagation.
-    
-    Input:
-        - extracted_entities: Drugs, diseases, genes from query
-        - literature_evidence: Evidence items from PubMed
-        
-    Output:
-        - simulation_result: SimulationResult with valid/rejected paths
+    It asks: "Can we get from Drug D to Disease X in the graph?"
+    It uses BFS.
     """
     
     name = "pathway_reasoning_agent"
@@ -166,13 +145,12 @@ class PathwayReasoningAgent(BaseAgent):
     
     async def process(self, state: AgentState) -> AgentState:
         """
-        Execute pathway simulation.
+        Run the simulation.
         
-        1. Identify drug and disease entities
-        2. Build biological graph from entities + evidence
-        3. Find all paths from drug to disease
-        4. Score and filter paths
-        5. Return SimulationResult
+        1. Find drug and disease
+        2. Build the graph
+        3. Do BFS
+        4. Return results
         """
         entities: List[BiomedicalEntity] = state.get("extracted_entities", [])
         evidence: List[EvidenceItem] = state.get("literature_evidence", [])
@@ -216,12 +194,7 @@ class PathwayReasoningAgent(BaseAgent):
         citations: List[Citation]
     ) -> BiologicalGraph:
         """
-        Construct biological graph from entities and evidence.
-        
-        Edges are inferred from:
-        1. Entity co-occurrence in evidence
-        2. Relation keywords in evidence text
-        3. Known biological relationships
+        Make the graph from our data.
         """
         graph = BiologicalGraph()
         
@@ -246,9 +219,8 @@ class PathwayReasoningAgent(BaseAgent):
         entities: List[BiomedicalEntity]
     ) -> List[BiologicalEdge]:
         """
-        Infer biological edges from evidence text.
-        
-        Uses keyword matching to determine relation types.
+        Guess the edges based on what the text says.
+        We look for keywords like 'inhibits' or 'activates'.
         """
         edges = []
         text = evidence.description.lower()
@@ -308,11 +280,8 @@ class PathwayReasoningAgent(BaseAgent):
         entities: List[BiomedicalEntity]
     ) -> None:
         """
-        Add canonical biological relationships.
-        
-        Drug -> Gene/Protein (MODULATES)
-        Gene -> Pathway (REGULATES)
-        Pathway -> Disease (CAUSES/PREVENTS)
+        Add some standard edges that we always assume are true.
+        Like drugs affecting genes.
         """
         drugs = [e for e in entities if e.entity_type == EntityType.DRUG]
         genes = [e for e in entities if e.entity_type in (EntityType.GENE, EntityType.PROTEIN)]
@@ -364,11 +333,8 @@ class PathwayReasoningAgent(BaseAgent):
         evidence: List[EvidenceItem]
     ) -> SimulationResult:
         """
-        Run pathway simulation using BFS traversal.
-        
-        Finds all paths from drug to disease up to MAX_PATH_DEPTH.
-        Scores paths using confidence propagation.
-        Rejects paths below threshold.
+        Run BFS to find paths.
+        We stop if the path gets too long.
         """
         valid_paths: List[PathwayPath] = []
         rejected_paths: List[RejectedPath] = []
@@ -436,14 +402,10 @@ class PathwayReasoningAgent(BaseAgent):
         evidence: List[EvidenceItem]
     ) -> Tuple[bool, any]:
         """
-        Evaluate a path for validity and compute confidence.
+        Check if a path is good enough.
         
-        Scoring:
-        - Base: product of edge confidences
-        - Penalty: PATH_LENGTH_PENALTY ^ (path_length - 1)
-        - Bonus: evidence support score
-        
-        Returns: (is_valid, PathwayPath or RejectedPath)
+        We calculate a score based on edge confidence and length.
+        Longer paths are penalized.
         """
         if not edges:
             return (False, RejectedPath(
@@ -499,11 +461,7 @@ class PathwayReasoningAgent(BaseAgent):
         evidence: List[EvidenceItem]
     ) -> float:
         """
-        Calculate evidence support score for a path.
-        
-        Based on:
-        - Number of PMIDs supporting edges
-        - Evidence confidence scores for mentioned entities
+        See how much the papers support this path.
         """
         if not evidence:
             return 0.0
@@ -532,7 +490,7 @@ class PathwayReasoningAgent(BaseAgent):
         return min(1.0, support_score / supporting_count)
     
     def _generate_rationale(self, edges: List[BiologicalEdge]) -> str:
-        """Generate scientific rationale for a pathway."""
+        """Write a sentence explaining the path."""
         if not edges:
             return "No pathway to explain."
         

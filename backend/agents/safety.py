@@ -1,18 +1,8 @@
 """
-BioMind Nexus - Safety Agent
+Safety Agent.
 
-Final validation gate for all agent outputs.
-MANDATORY checkpoint before any output is returned to users.
-
-Responsibilities:
-- Validate all outputs against Pydantic schemas
-- Check confidence thresholds across all candidates
-- Validate citations exist and are properly formatted
-- Flag speculative or unsupported claims
-- Block outputs with critical safety violations
-
-Design: Pure function - receives all outputs, returns safety verdict.
-This agent MUST be the final step in all workflow paths.
+This agent checks if the results are safe to show.
+It's the last step.
 """
 
 from typing import List, Any
@@ -31,20 +21,13 @@ from backend.agents.schemas import (
 
 class SafetyAgent(BaseAgent):
     """
-    Guardrail agent for output validation and safety checks.
+    Checks everything for safety.
     
-    ALL agent responses MUST pass through this agent before
-    being returned to the user. This is non-negotiable.
-    
-    Checks performed:
-    1. Schema validation (all outputs are valid Pydantic models)
-    2. Confidence thresholds (flag low-confidence results)
-    3. Citation validation (verify sources exist)
-    4. Content safety (no unsupported medical claims)
-    5. Completeness (required fields populated)
-    
-    Pure Input: ranked_candidates, all prior agent outputs
-    Pure Output: safety_result, final_candidates, workflow_approved
+    We make sure:
+    1. Schema is good
+    2. Confidence is high enough
+    3. Citations are real
+    4. No crazy medical claims
     """
     
     name = "safety_agent"
@@ -63,13 +46,7 @@ class SafetyAgent(BaseAgent):
     
     async def process(self, state: AgentState) -> AgentState:
         """
-        Perform comprehensive safety validation.
-        
-        Args:
-            state: Contains all prior agent outputs
-        
-        Returns:
-            State with safety_result and approved outputs
+        Run all the safety checks.
         """
         candidates: List[DrugCandidate] = state.get("ranked_candidates", [])
         
@@ -119,7 +96,7 @@ class SafetyAgent(BaseAgent):
         return state
     
     def _validate_candidate(self, candidate: DrugCandidate) -> List[SafetyFlag]:
-        """Validate a single drug candidate."""
+        """Check one candidate."""
         flags: List[SafetyFlag] = []
         
         # Check confidence threshold
@@ -192,7 +169,7 @@ class SafetyAgent(BaseAgent):
         state: AgentState, 
         approved_candidates: List[DrugCandidate]
     ) -> List[SafetyFlag]:
-        """Perform global validation checks across all outputs."""
+        """Check everything else."""
         flags: List[SafetyFlag] = []
         
         # Check if we have any results
@@ -233,7 +210,7 @@ class SafetyAgent(BaseAgent):
         return flags
     
     def _validate_citation(self, citation: Citation) -> List[SafetyFlag]:
-        """Validate a single citation (placeholder for real validation)."""
+        """Check if the citation looks real."""
         flags: List[SafetyFlag] = []
         
         # In production, would verify:

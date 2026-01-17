@@ -1,13 +1,7 @@
 """
-BioMind Nexus - Agent Schemas
+Schemas for all our agents.
 
-Pydantic models and TypedDicts for drug repurposing agent workflow.
-All agent communication uses these typed structures.
-
-Design Principles:
-- Strict typing enables validation and consistent interfaces
-- All outputs are Pydantic models for schema enforcement
-- Pure data structures with no side effects
+We use Pydantic models for everything so we know the data is correct.
 """
 
 from enum import Enum
@@ -21,14 +15,14 @@ from pydantic import BaseModel, Field, field_validator
 # =============================================================================
 
 class QueryType(str, Enum):
-    """Types of queries for agent routing."""
+    """Different types of queries."""
     DRUG_REPURPOSING = "drug_repurposing"
     LITERATURE = "literature"
     MECHANISM = "mechanism"
 
 
 class EntityType(str, Enum):
-    """Biomedical entity types."""
+    """Types of biological things."""
     DRUG = "drug"
     DISEASE = "disease"
     GENE = "gene"
@@ -38,7 +32,7 @@ class EntityType(str, Enum):
 
 
 class EvidenceType(str, Enum):
-    """Types of supporting evidence."""
+    """Where the evidence comes from."""
     LITERATURE = "literature"
     GRAPH_PATH = "graph_path"
     CLINICAL_TRIAL = "clinical_trial"
@@ -46,14 +40,14 @@ class EvidenceType(str, Enum):
 
 
 class Severity(str, Enum):
-    """Safety flag severity levels."""
+    """How bad a safety flag is."""
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
 
 
 class ExtractionMethod(str, Enum):
-    """Method used for entity/relation extraction."""
+    """How we found the entity."""
     BIOBERT = "BioBERT"
     PUBMEDBERT = "PubMedBERT"
     LLM = "LLM"
@@ -66,7 +60,7 @@ class ExtractionMethod(str, Enum):
 # =============================================================================
 
 class BiomedicalEntity(BaseModel):
-    """A biomedical entity extracted from text or graph."""
+    """A drug, disease, or gene."""
     id: str = Field(..., description="Unique identifier (e.g., DrugBank ID, DOID)")
     name: str = Field(..., description="Human-readable name")
     entity_type: EntityType
@@ -91,10 +85,7 @@ class BiomedicalEntity(BaseModel):
 
 class DrugRepurposingQuery(BaseModel):
     """
-    Structured input for drug repurposing analysis.
-    
-    This is the primary input schema for the agent workflow.
-    All queries are normalized to this structure.
+    The user's query formatted nicely.
     """
     query_id: str = Field(..., description="Unique query identifier for tracing")
     raw_query: str = Field(..., description="Original user query text")
@@ -125,7 +116,7 @@ class DrugRepurposingQuery(BaseModel):
 # =============================================================================
 
 class Citation(BaseModel):
-    """Citation for a published source."""
+    """A paper or article."""
     source_type: str = Field(..., description="pubmed, biorxiv, clinical_trial, etc.")
     source_id: str = Field(..., description="PMID, DOI, NCT number, etc.")
     title: str
@@ -138,10 +129,7 @@ class Citation(BaseModel):
 
 class MechanismPath(BaseModel):
     """
-    A causal pathway linking drug to disease.
-    
-    Represents a path through the knowledge graph:
-    Drug -> Target -> Pathway -> Disease
+    A path from drug to disease in our graph.
     """
     path_id: str
     nodes: List[BiomedicalEntity] = Field(..., min_length=2)
@@ -165,9 +153,7 @@ class MechanismPath(BaseModel):
 
 class EvidenceItem(BaseModel):
     """
-    A piece of evidence supporting a drug repurposing hypothesis.
-    
-    Evidence can come from literature, graph paths, or clinical data.
+    One piece of proof.
     """
     evidence_id: str
     evidence_type: EvidenceType
@@ -188,9 +174,7 @@ class EvidenceItem(BaseModel):
 
 class DrugCandidate(BaseModel):
     """
-    A drug repurposing hypothesis with supporting evidence.
-    
-    This is the primary output of the reasoning agent.
+    A drug that might work for the disease.
     """
     candidate_id: str
     drug: BiomedicalEntity
@@ -219,7 +203,7 @@ class DrugCandidate(BaseModel):
 
 
 class AgentResponse(BaseModel):
-    """Standardized response envelope from any agent."""
+    """Standard response from an agent."""
     agent_name: str
     agent_version: str
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
@@ -241,7 +225,7 @@ class AgentResponse(BaseModel):
 # =============================================================================
 
 class RelationType(str, Enum):
-    """Biological relationship types between entities."""
+    """How two things are related."""
     INHIBITS = "inhibits"
     ACTIVATES = "activates"
     BINDS = "binds"
@@ -261,10 +245,7 @@ class RelationType(str, Enum):
 
 class BiologicalEdge(BaseModel):
     """
-    A directed edge in the biological pathway graph.
-    
-    Represents a relationship between two biological entities
-    with associated confidence and evidence support.
+    A connection between two entities in the graph.
     """
     source_entity: str = Field(..., description="Source entity identifier")
     target_entity: str = Field(..., description="Target entity identifier")
@@ -289,10 +270,7 @@ class BiologicalEdge(BaseModel):
 
 class PathwayPath(BaseModel):
     """
-    A complete path through the biological graph from drug to disease.
-    
-    Represents a mechanistic hypothesis: Drug -> Target -> Pathway -> Disease
-    Each path is scored based on edge confidences and biological plausibility.
+    A full path from drug to disease.
     """
     path_id: str = Field(..., description="Unique path identifier")
     edges: List[BiologicalEdge] = Field(..., min_length=1, description="Ordered edges in path")
@@ -322,7 +300,7 @@ class PathwayPath(BaseModel):
 
 
 class RejectedPath(BaseModel):
-    """A path that was evaluated but rejected during simulation."""
+    """A path we threw away."""
     path_description: str = Field(..., description="Human-readable path description")
     rejection_reason: str = Field(..., description="Why this path was rejected")
     partial_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -330,10 +308,7 @@ class RejectedPath(BaseModel):
 
 class SimulationResult(BaseModel):
     """
-    Output of pathway simulation for a drug-disease pair.
-    
-    Contains all valid mechanistic paths discovered through
-    graph traversal and evidence-based confidence propagation.
+    The results of our simulation.
     """
     simulation_id: str = Field(..., description="Unique simulation identifier")
     drug: str = Field(..., description="Drug entity name")
@@ -370,7 +345,7 @@ class SimulationResult(BaseModel):
 # =============================================================================
 
 class SafetyFlag(BaseModel):
-    """A safety concern identified during validation."""
+    """Something that looks wrong."""
     flag_id: str
     flag_type: str = Field(..., description="Category: low_confidence, unsupported_claim, etc.")
     severity: Severity
@@ -380,7 +355,7 @@ class SafetyFlag(BaseModel):
 
 
 class SafetyCheck(BaseModel):
-    """Result of safety validation - final gate before output."""
+    """Final safety check results."""
     passed: bool
     requires_human_review: bool = False
     flags: List[SafetyFlag] = Field(default_factory=list)
@@ -409,13 +384,8 @@ class SafetyCheck(BaseModel):
 
 class AgentState(TypedDict, total=False):
     """
-    Shared state passed between agents in the execution graph.
-    
-    This is the data contract for the LangGraph workflow.
-    All agents read from and write to this shared state.
-    
-    Design: Agents are PURE - they transform state, nothing else.
-            Agents never access databases - data is pre-loaded by orchestrator.
+    The state that gets passed around between agents.
+    It holds all the data.
     """
     # === Input ===
     query: DrugRepurposingQuery

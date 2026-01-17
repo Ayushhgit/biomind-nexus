@@ -16,10 +16,6 @@ Design:
 from typing import List, Dict, Optional, Tuple, Literal
 from enum import Enum
 
-# Lazy imports for heavy ML dependencies
-# import torch
-# import numpy as np
-
 
 class ModelType(str, Enum):
     """Supported biomedical model types."""

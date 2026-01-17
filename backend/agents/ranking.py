@@ -1,14 +1,8 @@
 """
-Final ranking and scoring of drug repurposing candidates.
-Applies weighted multi-criteria ranking algorithm.
+Ranking Agent.
 
-Responsibilities:
-- Aggregate scores from multiple dimensions
-- Apply configurable weights for ranking
-- Enforce query constraints (min_confidence, max_candidates)
-- Return final ordered list of candidates
-
-Design: Pure function - receives candidates, returns ranked list.
+This agent gives a score to each drug to see which one is best.
+We use weights to decide what is important.
 """
 
 from typing import List
@@ -24,7 +18,7 @@ from backend.agents.schemas import (
 
 @dataclass(frozen=True)
 class RankingWeights:
-    """Configurable weights for multi-criteria ranking."""
+    """The weights for our ranking calculation."""
     overall_score: float = 0.35
     confidence: float = 0.25
     evidence_count: float = 0.20
@@ -49,13 +43,9 @@ class RankingWeights:
 
 class RankingAgent(BaseAgent):
     """
-    Agent for final candidate ranking and filtering.
+    This agent ranks the candidates.
     
-    Applies a weighted scoring algorithm to produce the final
-    ranked list of drug repurposing candidates.
-    
-    Pure Input: drug_candidates, query constraints
-    Pure Output: ranked_candidates
+    It takes the list of drugs and sorts them by score.
     """
     
     name = "ranking_agent"
@@ -76,13 +66,7 @@ class RankingAgent(BaseAgent):
     
     async def process(self, state: AgentState) -> AgentState:
         """
-        Rank and filter drug candidates.
-        
-        Args:
-            state: Contains drug_candidates from ReasoningAgent
-        
-        Returns:
-            State with ranked_candidates list
+        Sort the drugs by their score.
         """
         query: DrugRepurposingQuery = state["query"]
         candidates: List[DrugCandidate] = state.get("drug_candidates", [])
@@ -130,14 +114,14 @@ class RankingAgent(BaseAgent):
     
     def _calculate_composite_score(self, candidate: DrugCandidate) -> float:
         """
-        Calculate weighted composite score for ranking.
+        Calculate the final score.
         
-        Scoring dimensions:
-        - overall_score: Base score from reasoning
-        - confidence: Mechanism confidence
-        - evidence_count: Number of supporting evidence items
-        - mechanism_paths: Number of mechanistic pathways
-        - novelty: Novelty score (higher = more novel)
+        It combines:
+        - The reasoning score
+        - Confidence
+        - How much evidence we have
+        - The mechanism
+        - Novelty
         """
         weights = self.DEFAULT_WEIGHTS
         

@@ -1,15 +1,12 @@
 """
-BioMind Nexus - Base Agent Class
+This is the base class for all our agents.
+It makes sure every agent validates its input and output.
 
-Abstract base class for all specialized agents.
-Enforces pure function design and output schema validation.
-
-Design Principles (NON-NEGOTIABLE):
-- Agents are PURE functions: input -> output
-- Agents do NOT access databases
-- Agents do NOT perform authentication
-- Agents do NOT log directly
-- All outputs must conform to Pydantic schemas
+Rules:
+- Agents are simple functions: input -> output
+- Don't talk to the DB directly
+- Don't handle auth here
+- Outputs must be Pydantic models
 """
 
 from abc import ABC, abstractmethod
@@ -29,71 +26,61 @@ class AgentError(Exception):
     """Base exception for agent errors."""
     pass
 
-
 class InputValidationError(AgentError):
     """Raised when agent input fails validation."""
     pass
-
 
 class OutputValidationError(AgentError):
     """Raised when agent output fails schema validation."""
     pass
 
-
 class BaseAgent(ABC):
     """
-    Abstract base class for BioMind Nexus agents.
+    Base class for all agents.
     
-    All specialized agents inherit from this class and implement
-    the `process` method for their specific logic.
+    Every agent inherits from this. They have to implement `process`.
     
-    Lifecycle:
-    1. invoke() receives state
-    2. _validate_input() checks required fields
-    3. process() executes agent logic (implemented by subclass)
-    4. _validate_output() enforces schema compliance
-    5. Updated state returned
+    How it works:
+    1. invoke() is called
+    2. We check inputs
+    3. process() runs the logic
+    4. We check outputs
+    5. Return the new state
     
     Attributes:
-        name: Unique identifier for the agent
-        description: Human-readable description of agent purpose
-        version: Semantic version for tracking agent behavior changes
+        name: The agent's name
+        description: What it does
+        version: Version number
     """
     
     name: str = "base_agent"
     description: str = "Abstract base agent"
     version: str = "0.1.0"
     
-    # Subclasses define required input keys
     required_input_keys: list[str] = []
-    
-    # Subclasses define generated output keys
     output_keys: list[str] = []
     
     def __init__(self):
         """
         Initialize the agent.
-        
-        Note: Agents should NOT initialize database connections or
-        external services. All data flows through AgentState.
         """
         pass
     
     async def invoke(self, state: AgentState) -> AgentState:
         """
-        Execute the agent's primary function with validation.
+        Run the agent function.
         
-        This is the main entry point called by LangGraph.
+        This is what LangGraph calls.
         
         Args:
-            state: Current workflow state
+            state: The workflow state
         
         Returns:
-            Updated state with agent outputs added
+            The new state
         
         Raises:
-            InputValidationError: If required inputs are missing
-            OutputValidationError: If outputs fail schema validation
+            InputValidationError: If something is missing
+            OutputValidationError: If output is bad
         """
         start_time = time.perf_counter()
         
@@ -120,14 +107,14 @@ class BaseAgent(ABC):
     @abstractmethod
     async def process(self, state: AgentState) -> AgentState:
         """
-        Execute the agent's core logic.
-        Subclasses MUST implement this method.
+        Run the main logic.
+        You MUST override this function.
         
         Args:
-            state: Current workflow state with validated inputs
+            state: The current state
         
         Returns:
-            Updated state with agent outputs
+            The new state
         """
         raise NotImplementedError("Subclasses must implement process()")
     
@@ -150,10 +137,10 @@ class BaseAgent(ABC):
     
     def _validate_output(self, state: AgentState) -> None:
         """
-        Validate that agent outputs conform to schemas.
+        Check if we have the right outputs.
         
         Raises:
-            OutputValidationError: If outputs fail validation
+            OutputValidationError: If check fails
         """
         # Check output keys are present
         for key in self.output_keys:

@@ -319,8 +319,6 @@ class CassandraAuditClient:
             consistency_level=ConsistencyLevel.LOCAL_QUORUM
         )
         
-        # Note: This might be slow without timeframe. 
-        # In production, require date range + allow filtering.
         results = self._session.execute(statement, [request_id])
         
         events = []

@@ -1,13 +1,8 @@
 """
-Literature Agent - PubMedBERT Evidence Scoring
+Literature Agent.
 
-Retrieves literature from PubMed and scores evidence using PubMedBERT.
-Models are EXTRACTORS and SCORERS, not decision-makers.
-
-PubMedBERT computes semantic similarity for:
-    - Drug-target relation confidence
-    - Evidence-hypothesis relevance
-    - Citation aggregation weights
+This agent searches PubMed for papers.
+We use PubMedBERT to see if the papers are actually about what we want.
 """
 
 from typing import List, Dict, Any
@@ -30,7 +25,7 @@ from backend.services.pubmed_service import (
 
 # Lazy import for PubMedBERT scorer
 def _get_pubmedbert_scorer():
-    """Lazy load PubMedBERT scorer."""
+    """Load the scorer model if we can."""
     try:
         from backend.agents.biomedical_encoder import get_pubmedbert_scorer
         return get_pubmedbert_scorer()
@@ -40,15 +35,12 @@ def _get_pubmedbert_scorer():
 
 class LiteratureAgent(BaseAgent):
     """
-    Literature retrieval with PubMedBERT evidence scoring.
+    Finds papers and scores them.
     
-    Scoring Strategy:
-        1. Retrieve articles from PubMed API
-        2. Use PubMedBERT to score drug→target→disease relations
-        3. Attach confidence scores to EvidenceItem
-    
-    NO summarization. NO hypothesis generation.
-    Models only SCORE and EXTRACT.
+    Plan:
+    1. Search PubMed
+    2. Score the papers with PubMedBERT
+    3. Make evidence items with confidence scores
     """
     
     name = "literature_agent"
@@ -63,7 +55,7 @@ class LiteratureAgent(BaseAgent):
     
     async def process(self, state: AgentState) -> AgentState:
         """
-        Retrieve literature and score evidence.
+        Main function to get papers and score them.
         """
         entities: List[BiomedicalEntity] = state["extracted_entities"]
         
@@ -146,7 +138,7 @@ class LiteratureAgent(BaseAgent):
         return state
     
     def _article_to_citation(self, article: Dict[str, Any]) -> Citation | None:
-        """Convert PubMed article to Citation."""
+        """Turn the dictionary into a Citation object."""
         if not article:
             return None
         
@@ -174,7 +166,7 @@ class LiteratureAgent(BaseAgent):
         drug_name: str = "",
         disease_name: str = ""
     ) -> EvidenceItem | None:
-        """Create evidence item with optional PubMedBERT scoring."""
+        """Make an evidence object and score it."""
         if not article or not citation:
             return None
         
@@ -223,7 +215,7 @@ class LiteratureAgent(BaseAgent):
         )
     
     def _truncate(self, text: str, max_len: int = 300) -> str:
-        """Truncate text to max length."""
+        """Shorten text if it's too long."""
         if not text:
             return ""
         if len(text) <= max_len:

@@ -1,16 +1,9 @@
 """
-LangGraph Agent Orchestration - Drug Repurposing Workflow
+Main Graph Workflow.
 
-Deterministic multi-agent workflow with MANDATORY simulation step.
-
-Workflow (no bypasses for simulation or safety):
-    Entity Extraction → Literature → Pathway Simulation → Reasoning → Ranking → Safety → Output
-
-Architecture:
-- Deterministic execution path (no free-form chat)
-- Simulation ALWAYS runs (no bypass)
-- Safety ALWAYS runs (no bypass)
-- Agents do NOT access databases (data flows via state)
+All the agents are connected here.
+The flow is:
+Extraction -> Literature -> Simulation -> Reasoning -> Ranking -> Safety
 """
 
 from typing import Annotated, Literal
@@ -42,32 +35,32 @@ _safety_agent = SafetyAgent()
 # =============================================================================
 
 async def entity_extraction_node(state: AgentState) -> AgentState:
-    """Extract biomedical entities from query."""
+    """Call the extraction agent."""
     return await _entity_extraction_agent.invoke(state)
 
 
 async def literature_node(state: AgentState) -> AgentState:
-    """Retrieve literature evidence for entities."""
+    """Call the literature agent."""
     return await _literature_agent.invoke(state)
 
 
 async def pathway_simulation_node(state: AgentState) -> AgentState:
-    """Run deterministic pathway simulation."""
+    """Call the simulation agent."""
     return await _pathway_reasoning_agent.invoke(state)
 
 
 async def reasoning_node(state: AgentState) -> AgentState:
-    """Generate drug repurposing hypotheses."""
+    """Call the reasoning agent."""
     return await _reasoning_agent.invoke(state)
 
 
 async def ranking_node(state: AgentState) -> AgentState:
-    """Rank and filter candidates."""
+    """Call the ranking agent."""
     return await _ranking_agent.invoke(state)
 
 
 async def safety_node(state: AgentState) -> AgentState:
-    """Final safety validation gate."""
+    """Call the safety agent."""
     return await _safety_agent.invoke(state)
 
 
@@ -76,7 +69,7 @@ async def safety_node(state: AgentState) -> AgentState:
 # =============================================================================
 
 def should_continue_to_ranking(state: AgentState) -> Literal["ranking", "safety"]:
-    """Check if we have candidates to rank."""
+    """See if we have anything to rank."""
     candidates = state.get("drug_candidates", [])
     return "ranking" if candidates else "safety"
 
@@ -87,33 +80,10 @@ def should_continue_to_ranking(state: AgentState) -> Literal["ranking", "safety"
 
 def create_drug_repurposing_graph() -> StateGraph:
     """
-    Construct the LangGraph for drug repurposing workflow.
+    Build the graph.
     
-    Graph Structure (MANDATORY simulation and safety):
-    
-        [START]
-           │
-           ▼
-      Entity Extraction
-           │
-           ▼
-       Literature
-           │
-           ▼
-    Pathway Simulation  ◄── MANDATORY (no bypass)
-           │
-           ▼
-       Reasoning
-           │
-           ▼
-       (candidates?)
-         ╱     ╲
-        ▼       ▼
-    Ranking  ──►  Safety  ◄── MANDATORY
-        │           │
-        └──────────►│
-                    ▼
-                  [END]
+    It looks like this:
+    Start -> Extract -> Lit -> Sim -> Reason -> Ranking -> Safety -> End
     """
     workflow = StateGraph(AgentState)
     
@@ -166,21 +136,12 @@ async def run_drug_repurposing_workflow(
     request_id: str
 ) -> AgentState:
     """
-    Execute the drug repurposing workflow.
+    Run the whole thing.
     
-    Architecture:
-        1. Pre-load graph data via DAL (agents never touch DB)
-        2. Inject data into AgentState
-        3. Run deterministic agent pipeline
-        4. Log audit trail via DAL
-    
-    Args:
-        query: Structured query input
-        user_id: User identifier for audit
-        request_id: Request identifier for tracing
-    
-    Returns:
-        Final AgentState with all outputs
+    1. Load data
+    2. Set up state
+    3. Run the graph
+    4. Log what happened
     """
     # Pre-load graph context via DAL (agents don't know about this)
     graph_context = await _preload_graph_context(query)
@@ -208,14 +169,8 @@ async def run_drug_repurposing_workflow(
 
 async def _preload_graph_context(query: DrugRepurposingQuery) -> dict:
     """
-    Pre-load and optionally INGEST graph data via DAL.
-    
-    1. Identify Drug/Disease from query
-    2. Check if knowledge exists (via IngestionPipeline)
-    3. If missing, Pipeline fetches papers & persists facts
-    4. Return loaded graph context
-    
-    IMPORTANT: Returns empty dict on failure - workflow continues without pre-loading.
+    Load data from the DB if we can.
+    If we don't have it, we might try to fetch it from PubMed.
     """
     try:
         # Lazy import ingestion to avoid circular deps/startup overhead
@@ -381,11 +336,7 @@ async def _log_workflow_completion(
     user_id: str,
     request_id: str
 ) -> None:
-    """
-    Log workflow completion via DAL.
-    
-    Called AFTER agents complete. Agents never access audit logging.
-    """
+    """Log the results."""
     try:
         from backend.dal.cassandra_dal import log_workflow_complete
         
